@@ -1,0 +1,11 @@
+bin/
+obj/
+release/
+publish-self-contained/
+publish-self-contained-v2/
+publish-self-contained-v3/
+publish-self-contained-v4/
+*.user
+*.suo
+*.pdb
+AdbWireGuard-session-handoff.txt
