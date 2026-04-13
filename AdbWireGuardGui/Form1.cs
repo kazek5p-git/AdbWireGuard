@@ -37,6 +37,7 @@ public partial class Form1 : Form
     private static readonly string ComponentsVersionPath = Path.Combine(StateRoot, "components-version.txt");
     private static readonly string LastActionNamePath = Path.Combine(StateRoot, "gui-last-action-name.txt");
     private static readonly string LastActionReportPath = Path.Combine(StateRoot, "gui-last-action-report.txt");
+    private const int DefaultRelaySessionTtlMinutes = 5;
 
     private static readonly string[] ComponentFiles =
     {
@@ -69,6 +70,7 @@ public partial class Form1 : Form
     };
 
     private readonly GitHubUpdateService _updateService = new();
+    private readonly RelayApiClient _relayApiClient = new();
     private readonly Version _guiVersion;
     private GuiSettings _settings;
     private bool _isBusy;
@@ -77,6 +79,18 @@ public partial class Form1 : Form
     private string _lastConnectionTestText = string.Empty;
     private string _lastRemoteLogText = string.Empty;
     private string _lastRemoteUpdatedText = "Brak danych";
+    private string _lastRelayLogText = string.Empty;
+    private string _lastRelayUpdatedText = "Brak danych";
+    private Guid? _relayOwnedSessionId;
+    private string _relayOwnedServerUrl = string.Empty;
+    private string _relayOwnedHostToken = string.Empty;
+    private Guid? _relayLastSessionId;
+    private string _relayLastPairCode = string.Empty;
+    private string _relayLastRole = string.Empty;
+    private string _relayLastServerUrl = string.Empty;
+    private string _relayLastName = string.Empty;
+    private string _relayLastSessionStatus = string.Empty;
+    private string _relayLastExpiresAtText = string.Empty;
 
     public Form1()
     {
@@ -91,8 +105,16 @@ public partial class Form1 : Form
         versionTextBox.Text = _guiVersion.ToString();
         serverHostTextBox.Text = _settings.RemoteServerHost ?? string.Empty;
         adbCommandTextBox.Text = string.IsNullOrWhiteSpace(_settings.RemoteAdbCommand) ? "devices" : _settings.RemoteAdbCommand;
+        relayServerTextBox.Text = _settings.RelayServerUrl ?? string.Empty;
+        relayHostTokenTextBox.Text = _settings.RelayHostToken ?? string.Empty;
+        relayNameTextBox.Text = string.IsNullOrWhiteSpace(_settings.RelayName) ? Environment.MachineName : _settings.RelayName;
+        relayPairCodeTextBox.Text = _settings.RelayPairCode ?? string.Empty;
 
-        if (string.Equals(_settings.Mode, "remote", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(_settings.Mode, "relay", StringComparison.OrdinalIgnoreCase))
+        {
+            relayModeRadioButton.Checked = true;
+        }
+        else if (string.Equals(_settings.Mode, "remote", StringComparison.OrdinalIgnoreCase))
         {
             remoteModeRadioButton.Checked = true;
         }
@@ -109,7 +131,9 @@ public partial class Form1 : Form
         refreshTimer.Start();
     }
 
-    private bool IsRemoteMode => remoteModeRadioButton.Checked;
+    private bool IsDirectRemoteMode => remoteModeRadioButton.Checked;
+    private bool IsRelayMode => relayModeRadioButton.Checked;
+    private bool IsRelayClientIntent => IsRelayMode && !string.IsNullOrWhiteSpace(relayPairCodeTextBox.Text);
 
     private async void Form1_Shown(object? sender, EventArgs e)
     {
@@ -129,7 +153,13 @@ public partial class Form1 : Form
 
     private async void primaryActionButton_Click(object sender, EventArgs e)
     {
-        if (IsRemoteMode)
+        if (IsRelayMode)
+        {
+            await RunRelayActionAsync();
+            return;
+        }
+
+        if (IsDirectRemoteMode)
         {
             await RunRemoteCommandAsync();
             return;
@@ -143,6 +173,12 @@ public partial class Form1 : Form
 
     private async void stopButton_Click(object sender, EventArgs e)
     {
+        if (IsRelayMode)
+        {
+            await CloseRelaySessionAsync();
+            return;
+        }
+
         await RunScriptAsync(
             scriptPath: StopScriptPath,
             pendingStatus: "Zatrzymywanie ADB przez WireGuard...",
@@ -297,6 +333,16 @@ public partial class Form1 : Form
         RefreshTimerTick(this, EventArgs.Empty);
     }
 
+    private void relayPairCodeTextBox_TextChanged(object? sender, EventArgs e)
+    {
+        if (!IsHandleCreated || !IsRelayMode)
+        {
+            return;
+        }
+
+        RefreshModeUi();
+    }
+
     private void RefreshTimerTick(object? sender, EventArgs e)
     {
         RefreshModeUi();
@@ -305,8 +351,9 @@ public partial class Form1 : Form
         var stateExists = Directory.Exists(StateRoot);
 
         primaryActionButton.Enabled = !_isBusy && packageExists;
-        stopButton.Enabled = !_isBusy && packageExists && !IsRemoteMode;
-        stopButton.Visible = !IsRemoteMode;
+        stopButton.Enabled = !_isBusy && packageExists && (!IsDirectRemoteMode) &&
+            (!IsRelayMode || _relayOwnedSessionId.HasValue);
+        stopButton.Visible = !IsDirectRemoteMode && (!IsRelayMode || _relayOwnedSessionId.HasValue);
         refreshButton.Enabled = !_isBusy;
         testConnectionButton.Enabled = !_isBusy;
         updateButton.Enabled = !_isBusy && packageExists;
@@ -320,6 +367,7 @@ public partial class Form1 : Form
         updateButton.Visible = false;
         clearLogsButton.Visible = false;
         remoteSettingsLayoutPanel.Enabled = !_isBusy;
+        relaySettingsLayoutPanel.Enabled = !_isBusy;
 
         if (!packageExists)
         {
@@ -329,7 +377,7 @@ public partial class Form1 : Form
             return;
         }
 
-        if (IsRemoteMode)
+        if (IsDirectRemoteMode)
         {
             if (string.IsNullOrWhiteSpace(_lastStatusText))
             {
@@ -338,6 +386,18 @@ public partial class Form1 : Form
 
             updatedTextBox.Text = _lastRemoteUpdatedText;
             logTextBox.Text = BuildRemoteLogText();
+            return;
+        }
+
+        if (IsRelayMode)
+        {
+            if (string.IsNullOrWhiteSpace(_lastStatusText))
+            {
+                SetStatus(IsRelayClientIntent ? "Gotowe do dołączenia do sesji relay." : "Gotowe do utworzenia sesji relay.");
+            }
+
+            updatedTextBox.Text = _lastRelayUpdatedText;
+            logTextBox.Text = BuildRelayLogText();
             return;
         }
 
@@ -354,21 +414,40 @@ public partial class Form1 : Form
 
     private void RefreshModeUi()
     {
-        var isRemoteMode = IsRemoteMode;
+        var isDirectRemoteMode = IsDirectRemoteMode;
+        var isRelayMode = IsRelayMode;
+        var isRelayClientMode = IsRelayClientIntent;
 
-        modeTextBox.Text = isRemoteMode ? "Klient zdalny" : "Serwer lokalny";
-        modeHintLabel.Text = isRemoteMode
-            ? "Połącz z komputerem, na którym już działa ADB przez WireGuard."
-            : "Włącz udostępnianie ADB na tym komputerze z telefonem podłączonym po USB.";
-        primaryActionButton.Text = isRemoteMode
-            ? "Połącz z drugim komputerem"
-            : "Uruchom serwer na tym komputerze";
-        testConnectionButton.Text = isRemoteMode
-            ? "Sprawdź połączenie z serwerem"
-            : "Sprawdź serwer na tym komputerze";
-        remoteSettingsLayoutPanel.Visible = isRemoteMode;
+        modeTextBox.Text = isRelayMode
+            ? "Relay przez serwer"
+            : isDirectRemoteMode
+                ? "Klient zdalny"
+                : "Serwer lokalny";
+        modeHintLabel.Text = isRelayMode
+            ? isRelayClientMode
+                ? "Wpisz kod sesji od hosta i zgłoś klienta do relaya."
+                : "Utwórz sesję relay na serwerze i przekaż kod drugiej stronie."
+            : isDirectRemoteMode
+                ? "Połącz z komputerem, na którym już działa ADB przez WireGuard."
+                : "Włącz udostępnianie ADB na tym komputerze z telefonem podłączonym po USB.";
+        primaryActionButton.Text = isRelayMode
+            ? isRelayClientMode
+                ? "Dołącz do sesji relay"
+                : "Utwórz sesję relay"
+            : isDirectRemoteMode
+                ? "Połącz z drugim komputerem"
+                : "Uruchom serwer na tym komputerze";
+        testConnectionButton.Text = isRelayMode
+            ? "Sprawdź serwer relay"
+            : isDirectRemoteMode
+                ? "Sprawdź połączenie z serwerem"
+                : "Sprawdź serwer na tym komputerze";
+        stopButton.Text = isRelayMode ? "Zamknij sesję relay" : "Zatrzymaj";
+        remoteSettingsLayoutPanel.Visible = isDirectRemoteMode;
+        relaySettingsLayoutPanel.Visible = isRelayMode;
+        relayHostTokenTextBox.Enabled = !isRelayMode || !isRelayClientMode;
 
-        _settings.Mode = isRemoteMode ? "remote" : "local";
+        _settings.Mode = isRelayMode ? "relay" : isDirectRemoteMode ? "remote" : "local";
     }
 
     private async Task RunScriptAsync(string scriptPath, string pendingStatus, string actionName)
@@ -523,9 +602,240 @@ public partial class Form1 : Form
         }
     }
 
+    private async Task RunRelayActionAsync()
+    {
+        var relayServerUrl = RelayApiClient.NormalizeServerUrl(relayServerTextBox.Text);
+        if (string.IsNullOrWhiteSpace(relayServerUrl))
+        {
+            SetStatus("Podaj adres serwera relay.");
+            relayServerTextBox.Focus();
+            return;
+        }
+
+        var pairCode = relayPairCodeTextBox.Text.Trim().ToUpperInvariant();
+        var relayName = relayNameTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(relayName))
+        {
+            relayName = Environment.MachineName;
+            relayNameTextBox.Text = relayName;
+        }
+
+        relayServerTextBox.Text = relayServerUrl;
+
+        _settings.RelayServerUrl = relayServerUrl;
+        _settings.RelayName = relayName;
+        _settings.RelayPairCode = pairCode;
+
+        if (string.IsNullOrWhiteSpace(pairCode))
+        {
+            var hostToken = relayHostTokenTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(hostToken))
+            {
+                SetStatus("Podaj token hosta relay.");
+                relayHostTokenTextBox.Focus();
+                return;
+            }
+
+            _settings.RelayHostToken = hostToken;
+        }
+
+        SaveSettings();
+
+        FocusStatus();
+        SetBusy(true);
+        SetStatus(string.IsNullOrWhiteSpace(pairCode)
+            ? "Tworzenie sesji relay..."
+            : $"Dołączanie do sesji {pairCode}...");
+        _lastRelayUpdatedText = "Trwa połączenie...";
+        _lastRelayLogText = string.Empty;
+        RefreshTimerTick(this, EventArgs.Empty);
+        FocusStatus();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(pairCode))
+            {
+                var hostToken = relayHostTokenTextBox.Text.Trim();
+                var response = await _relayApiClient.CreateSessionAsync(
+                    relayServerUrl,
+                    hostToken,
+                    relayName,
+                    DefaultRelaySessionTtlMinutes,
+                    CancellationToken.None);
+
+                RelaySessionStatusResponse? status = null;
+                try
+                {
+                    status = await _relayApiClient.GetSessionStatusAsync(
+                        relayServerUrl,
+                        response.SessionId,
+                        hostToken,
+                        CancellationToken.None);
+                }
+                catch
+                {
+                    // Session was created already; status fetch is best-effort in this first stage.
+                }
+
+                _relayOwnedSessionId = response.SessionId;
+                _relayOwnedServerUrl = relayServerUrl;
+                _relayOwnedHostToken = hostToken;
+                _relayLastSessionId = response.SessionId;
+                _relayLastPairCode = response.PairCode;
+                _relayLastRole = "host";
+                _relayLastServerUrl = relayServerUrl;
+                _relayLastName = relayName;
+                _relayLastSessionStatus = status?.Status ?? "pending-host";
+                _relayLastExpiresAtText = response.ExpiresAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+                _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                _lastRelayLogText = BuildRelayHostResultText(
+                    relayServerUrl,
+                    relayName,
+                    response,
+                    status);
+
+                SetStatus($"Sesja relay gotowa. Kod: {response.PairCode}");
+            }
+            else
+            {
+                var response = await _relayApiClient.ClaimSessionAsync(
+                    relayServerUrl,
+                    pairCode,
+                    relayName,
+                    CancellationToken.None);
+
+                _relayLastSessionId = response.SessionId;
+                _relayLastPairCode = pairCode;
+                _relayLastRole = "client";
+                _relayLastServerUrl = relayServerUrl;
+                _relayLastName = relayName;
+                _relayLastSessionStatus = "claimed";
+                _relayLastExpiresAtText = response.ExpiresAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+                _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                _lastRelayLogText = BuildRelayClientResultText(
+                    relayServerUrl,
+                    relayName,
+                    pairCode,
+                    response);
+
+                SetStatus($"Kod {pairCode} został zaakceptowany przez relay.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            _lastRelayLogText = BuildRelayErrorText(
+                relayServerUrl,
+                relayName,
+                pairCode,
+                ex);
+            SetStatus($"Relay: {ex.Message}");
+        }
+        finally
+        {
+            SetBusy(false);
+            RefreshTimerTick(this, EventArgs.Empty);
+            FocusStatus();
+        }
+    }
+
+    private async Task CloseRelaySessionAsync()
+    {
+        if (!_relayOwnedSessionId.HasValue ||
+            string.IsNullOrWhiteSpace(_relayOwnedServerUrl) ||
+            string.IsNullOrWhiteSpace(_relayOwnedHostToken))
+        {
+            SetStatus("Brak aktywnej sesji relay utworzonej na tym komputerze.");
+            return;
+        }
+
+        var sessionId = _relayOwnedSessionId.Value;
+        var serverUrl = _relayOwnedServerUrl;
+
+        FocusStatus();
+        SetBusy(true);
+        SetStatus("Zamykanie sesji relay...");
+
+        try
+        {
+            await _relayApiClient.CloseSessionAsync(
+                serverUrl,
+                sessionId,
+                _relayOwnedHostToken,
+                CancellationToken.None);
+
+            _relayOwnedSessionId = null;
+            _relayOwnedHostToken = string.Empty;
+            _relayOwnedServerUrl = string.Empty;
+            _relayLastSessionStatus = "closed";
+            _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            _lastRelayLogText = BuildRelayClosedText(sessionId, serverUrl);
+            SetStatus("Sesja relay została zamknięta.");
+        }
+        catch (Exception ex)
+        {
+            _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            _lastRelayLogText = BuildRelayErrorText(serverUrl, _relayLastName, _relayLastPairCode, ex);
+            SetStatus($"Nie udało się zamknąć sesji relay: {ex.Message}");
+        }
+        finally
+        {
+            SetBusy(false);
+            RefreshTimerTick(this, EventArgs.Empty);
+            FocusStatus();
+        }
+    }
+
     private async Task RunConnectionTestAsync()
     {
-        var targetHost = IsRemoteMode ? serverHostTextBox.Text.Trim() : "127.0.0.1";
+        if (IsRelayMode)
+        {
+            var relayServerUrl = RelayApiClient.NormalizeServerUrl(relayServerTextBox.Text);
+            if (string.IsNullOrWhiteSpace(relayServerUrl))
+            {
+                SetStatus("Podaj adres serwera relay.");
+                relayServerTextBox.Focus();
+                return;
+            }
+
+            SetBusy(true);
+            SetStatus($"Sprawdzanie serwera relay {relayServerUrl}...");
+
+            try
+            {
+                var response = await _relayApiClient.GetHealthAsync(relayServerUrl, CancellationToken.None);
+                _lastConnectionTestText = string.Join(
+                    Environment.NewLine,
+                    new[]
+                    {
+                        "Test serwera relay",
+                        $"Adres: {relayServerUrl}",
+                        $"Service: {response.Service}",
+                        $"Health: {(response.Ok ? "OK" : "blad")}",
+                        $"Skonfigurowane tokeny hosta: {response.HostTokensConfigured}"
+                    });
+                _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                SetStatus(response.Ok
+                    ? $"Serwer relay {relayServerUrl} odpowiada."
+                    : $"Serwer relay {relayServerUrl} zwrócił błąd.");
+            }
+            catch (Exception ex)
+            {
+                _lastConnectionTestText = $"Test serwera relay{Environment.NewLine}{ex}";
+                _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                SetStatus($"Błąd testu relay: {ex.Message}");
+            }
+            finally
+            {
+                SetBusy(false);
+                RefreshTimerTick(this, EventArgs.Empty);
+                FocusStatus();
+            }
+
+            return;
+        }
+
+        var targetHost = IsDirectRemoteMode ? serverHostTextBox.Text.Trim() : "127.0.0.1";
         var port = 5037;
 
         if (string.IsNullOrWhiteSpace(targetHost))
@@ -536,7 +846,7 @@ public partial class Form1 : Form
         }
 
         SetBusy(true);
-        SetStatus(IsRemoteMode
+        SetStatus(IsDirectRemoteMode
             ? $"Sprawdzanie połączenia z {targetHost}:{port}..."
             : $"Sprawdzanie lokalnego serwera na porcie {port}...");
 
@@ -544,7 +854,7 @@ public partial class Form1 : Form
         {
             var pingOk = await TestPingAsync(targetHost);
             var tcpOk = await TestTcpAsync(targetHost, port);
-            var title = IsRemoteMode ? "Test połączenia zdalnego" : "Test serwera lokalnego";
+            var title = IsDirectRemoteMode ? "Test połączenia zdalnego" : "Test serwera lokalnego";
             var lines = new List<string>
             {
                 title,
@@ -558,13 +868,13 @@ public partial class Form1 : Form
 
             if (tcpOk)
             {
-                SetStatus(IsRemoteMode
+                SetStatus(IsDirectRemoteMode
                     ? $"Połączenie z {targetHost}:{port} działa."
                     : $"Lokalny serwer odpowiada na porcie {port}.");
             }
             else
             {
-                SetStatus(IsRemoteMode
+                SetStatus(IsDirectRemoteMode
                     ? $"Brak połączenia z {targetHost}:{port}."
                     : $"Lokalny serwer nie odpowiada na porcie {port}.");
             }
@@ -1274,6 +1584,40 @@ public partial class Form1 : Form
         return string.Join($"{Environment.NewLine}{Environment.NewLine}", sections);
     }
 
+    private string BuildRelayLogText()
+    {
+        var sections = new List<string>();
+
+        AddSection(sections, "Test połączenia", _lastConnectionTestText);
+
+        if (!string.IsNullOrWhiteSpace(_lastRelayLogText))
+        {
+            AddSection(sections, "Sesja relay", _lastRelayLogText);
+            return string.Join($"{Environment.NewLine}{Environment.NewLine}", sections);
+        }
+
+        var intentText = IsRelayClientIntent
+            ? "Tryb klienta: wpisz kod sesji i kliknij główny przycisk."
+            : "Tryb hosta: zostaw pole kodu puste i kliknij główny przycisk, aby utworzyć sesję.";
+
+        AddSection(
+            sections,
+            "Tryb relay",
+            string.Join(
+                Environment.NewLine,
+                new[]
+                {
+                    $"Serwer: {relayServerTextBox.Text.Trim()}",
+                    $"Nazwa: {relayNameTextBox.Text.Trim()}",
+                    $"Kod sesji: {relayPairCodeTextBox.Text.Trim()}",
+                    string.Empty,
+                    intentText,
+                    "Ten etap GUI tworzy i claimuje sesję relay. Tunel ADB przez WebSocket będzie dopięty w następnym etapie."
+                }));
+
+        return string.Join($"{Environment.NewLine}{Environment.NewLine}", sections);
+    }
+
     private static string BuildRemoteResultText(string serverHost, string adbCommand, string stdout, string stderr, int exitCode)
     {
         var sections = new List<string>
@@ -1287,6 +1631,95 @@ public partial class Form1 : Form
         return string.Join(
             $"{Environment.NewLine}{Environment.NewLine}",
             sections);
+    }
+
+    private static string BuildRelayHostResultText(
+        string relayServerUrl,
+        string relayName,
+        RelayCreateSessionResponse response,
+        RelaySessionStatusResponse? status)
+    {
+        var sections = new List<string>
+        {
+            string.Join(
+                Environment.NewLine,
+                new[]
+                {
+                    "Sesja relay utworzona",
+                    $"Serwer: {relayServerUrl}",
+                    $"Rola: host",
+                    $"Nazwa: {relayName}",
+                    $"Kod sesji: {response.PairCode}",
+                    $"SessionId: {response.SessionId}",
+                    $"Wygasa: {response.ExpiresAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
+                    $"Status API: {status?.Status ?? "brak potwierdzenia"}",
+                    $"Host connected: {status?.HostConnected.ToString() ?? "brak danych"}",
+                    $"Client connected: {status?.ClientConnected.ToString() ?? "brak danych"}",
+                    string.Empty,
+                    "Udostępnij kod sesji drugiej stronie. Ten etap GUI jeszcze nie zestawia tunelu ADB przez WebSocket."
+                })
+        };
+
+        return string.Join($"{Environment.NewLine}{Environment.NewLine}", sections);
+    }
+
+    private static string BuildRelayClientResultText(
+        string relayServerUrl,
+        string relayName,
+        string pairCode,
+        RelayClaimSessionResponse response)
+    {
+        var sections = new List<string>
+        {
+            string.Join(
+                Environment.NewLine,
+                new[]
+                {
+                    "Claim sesji relay zakończony",
+                    $"Serwer: {relayServerUrl}",
+                    $"Rola: client",
+                    $"Nazwa: {relayName}",
+                    $"Kod sesji: {pairCode}",
+                    $"SessionId: {response.SessionId}",
+                    $"Wygasa: {response.ExpiresAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
+                    string.Empty,
+                    "Sesja została zaakceptowana przez broker. Tunel ADB przez relay będzie dopięty w kolejnym etapie GUI."
+                })
+        };
+
+        return string.Join($"{Environment.NewLine}{Environment.NewLine}", sections);
+    }
+
+    private static string BuildRelayClosedText(Guid sessionId, string relayServerUrl)
+    {
+        return string.Join(
+            Environment.NewLine,
+            new[]
+            {
+                "Sesja relay została zamknięta",
+                $"Serwer: {relayServerUrl}",
+                $"SessionId: {sessionId}"
+            });
+    }
+
+    private static string BuildRelayErrorText(string relayServerUrl, string relayName, string pairCode, Exception ex)
+    {
+        var sections = new List<string>
+        {
+            string.Join(
+                Environment.NewLine,
+                new[]
+                {
+                    "Błąd relay",
+                    $"Serwer: {relayServerUrl}",
+                    $"Nazwa: {relayName}",
+                    $"Kod sesji: {pairCode}"
+                })
+        };
+
+        AddSection(sections, "Szczegóły", ex.Message);
+        AddSection(sections, "Diagnostyka", ex.ToString());
+        return string.Join($"{Environment.NewLine}{Environment.NewLine}", sections);
     }
 
     private string NormalizeRemoteCommand()
@@ -1376,9 +1809,13 @@ public partial class Form1 : Form
     {
         try
         {
-            _settings.Mode = IsRemoteMode ? "remote" : "local";
+            _settings.Mode = IsRelayMode ? "relay" : IsDirectRemoteMode ? "remote" : "local";
             _settings.RemoteServerHost = serverHostTextBox.Text.Trim();
             _settings.RemoteAdbCommand = NormalizeRemoteCommand();
+            _settings.RelayServerUrl = RelayApiClient.NormalizeServerUrl(relayServerTextBox.Text);
+            _settings.RelayHostToken = relayHostTokenTextBox.Text.Trim();
+            _settings.RelayName = relayNameTextBox.Text.Trim();
+            _settings.RelayPairCode = relayPairCodeTextBox.Text.Trim().ToUpperInvariant();
 
             var json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions
             {
@@ -1413,6 +1850,10 @@ public partial class Form1 : Form
         public string Mode { get; set; } = "local";
         public string RemoteServerHost { get; set; } = string.Empty;
         public string RemoteAdbCommand { get; set; } = "devices";
+        public string RelayServerUrl { get; set; } = string.Empty;
+        public string RelayHostToken { get; set; } = string.Empty;
+        public string RelayName { get; set; } = string.Empty;
+        public string RelayPairCode { get; set; } = string.Empty;
         public bool EnableVoiceNotifications { get; set; } = true;
         public bool EnableSoundNotifications { get; set; } = true;
         public bool EnableRouterAutomation { get; set; }
@@ -1438,6 +1879,10 @@ public partial class Form1 : Form
     {
         settings.RemoteServerHost ??= string.Empty;
         settings.RemoteAdbCommand = string.IsNullOrWhiteSpace(settings.RemoteAdbCommand) ? "devices" : settings.RemoteAdbCommand.Trim();
+        settings.RelayServerUrl = RelayApiClient.NormalizeServerUrl(settings.RelayServerUrl ?? string.Empty);
+        settings.RelayHostToken ??= string.Empty;
+        settings.RelayName = string.IsNullOrWhiteSpace(settings.RelayName) ? Environment.MachineName : settings.RelayName.Trim();
+        settings.RelayPairCode = (settings.RelayPairCode ?? string.Empty).Trim().ToUpperInvariant();
         settings.RouterHost ??= string.Empty;
         settings.RouterUser = string.IsNullOrWhiteSpace(settings.RouterUser) ? "admin" : settings.RouterUser.Trim();
         settings.RouterWireGuardIp ??= string.Empty;

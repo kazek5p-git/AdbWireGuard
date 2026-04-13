@@ -8,14 +8,24 @@ partial class Form1
     private FlowLayoutPanel modeFlowLayoutPanel;
     private RadioButton localModeRadioButton;
     private RadioButton remoteModeRadioButton;
+    private RadioButton relayModeRadioButton;
     private Label modeHintLabel;
     private Label packageLabel;
     private TextBox packagePathTextBox;
     private TableLayoutPanel remoteSettingsLayoutPanel;
+    private TableLayoutPanel relaySettingsLayoutPanel;
     private Label serverHostLabel;
     private TextBox serverHostTextBox;
     private Label adbCommandLabel;
     private TextBox adbCommandTextBox;
+    private Label relayServerLabel;
+    private TextBox relayServerTextBox;
+    private Label relayHostTokenLabel;
+    private TextBox relayHostTokenTextBox;
+    private Label relayNameLabel;
+    private TextBox relayNameTextBox;
+    private Label relayPairCodeLabel;
+    private TextBox relayPairCodeTextBox;
     private FlowLayoutPanel actionsPanel;
     private Button primaryActionButton;
     private Button stopButton;
@@ -61,13 +71,23 @@ partial class Form1
         modeFlowLayoutPanel = new FlowLayoutPanel();
         localModeRadioButton = new RadioButton();
         remoteModeRadioButton = new RadioButton();
+        relayModeRadioButton = new RadioButton();
         packageLabel = new Label();
         packagePathTextBox = new TextBox();
         remoteSettingsLayoutPanel = new TableLayoutPanel();
+        relaySettingsLayoutPanel = new TableLayoutPanel();
         serverHostLabel = new Label();
         serverHostTextBox = new TextBox();
         adbCommandLabel = new Label();
         adbCommandTextBox = new TextBox();
+        relayServerLabel = new Label();
+        relayServerTextBox = new TextBox();
+        relayHostTokenLabel = new Label();
+        relayHostTokenTextBox = new TextBox();
+        relayNameLabel = new Label();
+        relayNameTextBox = new TextBox();
+        relayPairCodeLabel = new Label();
+        relayPairCodeTextBox = new TextBox();
         actionsPanel = new FlowLayoutPanel();
         primaryActionButton = new Button();
         stopButton = new Button();
@@ -97,6 +117,7 @@ partial class Form1
         modeGroupBox.SuspendLayout();
         modeFlowLayoutPanel.SuspendLayout();
         remoteSettingsLayoutPanel.SuspendLayout();
+        relaySettingsLayoutPanel.SuspendLayout();
         actionsPanel.SuspendLayout();
         summaryLayoutPanel.SuspendLayout();
         SuspendLayout();
@@ -109,15 +130,17 @@ partial class Form1
         rootLayoutPanel.Controls.Add(packageLabel, 0, 1);
         rootLayoutPanel.Controls.Add(packagePathTextBox, 0, 2);
         rootLayoutPanel.Controls.Add(remoteSettingsLayoutPanel, 0, 3);
-        rootLayoutPanel.Controls.Add(actionsPanel, 0, 4);
-        rootLayoutPanel.Controls.Add(summaryLayoutPanel, 0, 5);
-        rootLayoutPanel.Controls.Add(logLabel, 0, 6);
-        rootLayoutPanel.Controls.Add(logTextBox, 0, 7);
+        rootLayoutPanel.Controls.Add(relaySettingsLayoutPanel, 0, 4);
+        rootLayoutPanel.Controls.Add(actionsPanel, 0, 5);
+        rootLayoutPanel.Controls.Add(summaryLayoutPanel, 0, 6);
+        rootLayoutPanel.Controls.Add(logLabel, 0, 7);
+        rootLayoutPanel.Controls.Add(logTextBox, 0, 8);
         rootLayoutPanel.Dock = DockStyle.Fill;
         rootLayoutPanel.Location = new Point(0, 0);
         rootLayoutPanel.Name = "rootLayoutPanel";
         rootLayoutPanel.Padding = new Padding(12);
-        rootLayoutPanel.RowCount = 8;
+        rootLayoutPanel.RowCount = 9;
+        rootLayoutPanel.RowStyles.Add(new RowStyle());
         rootLayoutPanel.RowStyles.Add(new RowStyle());
         rootLayoutPanel.RowStyles.Add(new RowStyle());
         rootLayoutPanel.RowStyles.Add(new RowStyle());
@@ -158,6 +181,7 @@ partial class Form1
         modeFlowLayoutPanel.AutoSize = true;
         modeFlowLayoutPanel.Controls.Add(localModeRadioButton);
         modeFlowLayoutPanel.Controls.Add(remoteModeRadioButton);
+        modeFlowLayoutPanel.Controls.Add(relayModeRadioButton);
         modeFlowLayoutPanel.Dock = DockStyle.Top;
         modeFlowLayoutPanel.Location = new Point(12, 26);
         modeFlowLayoutPanel.Name = "modeFlowLayoutPanel";
@@ -187,6 +211,17 @@ partial class Form1
         remoteModeRadioButton.Text = "Połącz z drugim komputerem";
         remoteModeRadioButton.UseVisualStyleBackColor = true;
         remoteModeRadioButton.CheckedChanged += modeRadioButton_CheckedChanged;
+        //
+        // relayModeRadioButton
+        //
+        relayModeRadioButton.AutoSize = true;
+        relayModeRadioButton.Location = new Point(352, 3);
+        relayModeRadioButton.Name = "relayModeRadioButton";
+        relayModeRadioButton.Size = new Size(128, 19);
+        relayModeRadioButton.TabIndex = 2;
+        relayModeRadioButton.Text = "Połącz przez serwer";
+        relayModeRadioButton.UseVisualStyleBackColor = true;
+        relayModeRadioButton.CheckedChanged += modeRadioButton_CheckedChanged;
         //
         // packageLabel
         //
@@ -261,6 +296,106 @@ partial class Form1
         adbCommandTextBox.Size = new Size(824, 23);
         adbCommandTextBox.TabIndex = 3;
         //
+        // relaySettingsLayoutPanel
+        //
+        relaySettingsLayoutPanel.ColumnCount = 2;
+        relaySettingsLayoutPanel.ColumnStyles.Add(new ColumnStyle());
+        relaySettingsLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        relaySettingsLayoutPanel.Controls.Add(relayServerLabel, 0, 0);
+        relaySettingsLayoutPanel.Controls.Add(relayServerTextBox, 1, 0);
+        relaySettingsLayoutPanel.Controls.Add(relayHostTokenLabel, 0, 1);
+        relaySettingsLayoutPanel.Controls.Add(relayHostTokenTextBox, 1, 1);
+        relaySettingsLayoutPanel.Controls.Add(relayNameLabel, 0, 2);
+        relaySettingsLayoutPanel.Controls.Add(relayNameTextBox, 1, 2);
+        relaySettingsLayoutPanel.Controls.Add(relayPairCodeLabel, 0, 3);
+        relaySettingsLayoutPanel.Controls.Add(relayPairCodeTextBox, 1, 3);
+        relaySettingsLayoutPanel.Dock = DockStyle.Fill;
+        relaySettingsLayoutPanel.Location = new Point(15, 238);
+        relaySettingsLayoutPanel.Name = "relaySettingsLayoutPanel";
+        relaySettingsLayoutPanel.RowCount = 4;
+        relaySettingsLayoutPanel.RowStyles.Add(new RowStyle());
+        relaySettingsLayoutPanel.RowStyles.Add(new RowStyle());
+        relaySettingsLayoutPanel.RowStyles.Add(new RowStyle());
+        relaySettingsLayoutPanel.RowStyles.Add(new RowStyle());
+        relaySettingsLayoutPanel.Size = new Size(934, 128);
+        relaySettingsLayoutPanel.TabIndex = 4;
+        //
+        // relayServerLabel
+        //
+        relayServerLabel.Anchor = AnchorStyles.Left;
+        relayServerLabel.AutoSize = true;
+        relayServerLabel.Location = new Point(3, 6);
+        relayServerLabel.Name = "relayServerLabel";
+        relayServerLabel.Size = new Size(69, 15);
+        relayServerLabel.TabIndex = 0;
+        relayServerLabel.Text = "Adres relay";
+        //
+        // relayServerTextBox
+        //
+        relayServerTextBox.Dock = DockStyle.Fill;
+        relayServerTextBox.Location = new Point(147, 3);
+        relayServerTextBox.Name = "relayServerTextBox";
+        relayServerTextBox.PlaceholderText = "https://relay.example.com";
+        relayServerTextBox.Size = new Size(784, 23);
+        relayServerTextBox.TabIndex = 1;
+        //
+        // relayHostTokenLabel
+        //
+        relayHostTokenLabel.Anchor = AnchorStyles.Left;
+        relayHostTokenLabel.AutoSize = true;
+        relayHostTokenLabel.Location = new Point(3, 38);
+        relayHostTokenLabel.Name = "relayHostTokenLabel";
+        relayHostTokenLabel.Size = new Size(70, 15);
+        relayHostTokenLabel.TabIndex = 2;
+        relayHostTokenLabel.Text = "Token hosta";
+        //
+        // relayHostTokenTextBox
+        //
+        relayHostTokenTextBox.Dock = DockStyle.Fill;
+        relayHostTokenTextBox.Location = new Point(147, 35);
+        relayHostTokenTextBox.Name = "relayHostTokenTextBox";
+        relayHostTokenTextBox.Size = new Size(784, 23);
+        relayHostTokenTextBox.TabIndex = 3;
+        //
+        // relayNameLabel
+        //
+        relayNameLabel.Anchor = AnchorStyles.Left;
+        relayNameLabel.AutoSize = true;
+        relayNameLabel.Location = new Point(3, 70);
+        relayNameLabel.Name = "relayNameLabel";
+        relayNameLabel.Size = new Size(112, 15);
+        relayNameLabel.TabIndex = 4;
+        relayNameLabel.Text = "Nazwa hosta / klienta";
+        //
+        // relayNameTextBox
+        //
+        relayNameTextBox.Dock = DockStyle.Fill;
+        relayNameTextBox.Location = new Point(147, 67);
+        relayNameTextBox.Name = "relayNameTextBox";
+        relayNameTextBox.Size = new Size(784, 23);
+        relayNameTextBox.TabIndex = 5;
+        //
+        // relayPairCodeLabel
+        //
+        relayPairCodeLabel.Anchor = AnchorStyles.Left;
+        relayPairCodeLabel.AutoSize = true;
+        relayPairCodeLabel.Location = new Point(3, 102);
+        relayPairCodeLabel.Name = "relayPairCodeLabel";
+        relayPairCodeLabel.Size = new Size(132, 15);
+        relayPairCodeLabel.TabIndex = 6;
+        relayPairCodeLabel.Text = "Kod sesji (dla klienta)";
+        //
+        // relayPairCodeTextBox
+        //
+        relayPairCodeTextBox.CharacterCasing = CharacterCasing.Upper;
+        relayPairCodeTextBox.Dock = DockStyle.Fill;
+        relayPairCodeTextBox.Location = new Point(147, 99);
+        relayPairCodeTextBox.Name = "relayPairCodeTextBox";
+        relayPairCodeTextBox.PlaceholderText = "Wpisz kod, aby dołączyć do sesji";
+        relayPairCodeTextBox.Size = new Size(784, 23);
+        relayPairCodeTextBox.TabIndex = 7;
+        relayPairCodeTextBox.TextChanged += relayPairCodeTextBox_TextChanged;
+        //
         // actionsPanel
         //
         actionsPanel.AutoSize = true;
@@ -277,11 +412,11 @@ partial class Form1
         actionsPanel.Controls.Add(copyStatusButton);
         actionsPanel.Controls.Add(clearLogsButton);
         actionsPanel.Dock = DockStyle.Fill;
-        actionsPanel.Location = new Point(15, 238);
+        actionsPanel.Location = new Point(15, 372);
         actionsPanel.Margin = new Padding(3, 6, 3, 12);
         actionsPanel.Name = "actionsPanel";
         actionsPanel.Size = new Size(934, 39);
-        actionsPanel.TabIndex = 4;
+        actionsPanel.TabIndex = 5;
         //
         // primaryActionButton
         //
@@ -453,7 +588,7 @@ partial class Form1
         summaryLayoutPanel.Controls.Add(versionLabel, 0, 3);
         summaryLayoutPanel.Controls.Add(versionTextBox, 1, 3);
         summaryLayoutPanel.Dock = DockStyle.Fill;
-        summaryLayoutPanel.Location = new Point(15, 292);
+        summaryLayoutPanel.Location = new Point(15, 426);
         summaryLayoutPanel.Name = "summaryLayoutPanel";
         summaryLayoutPanel.RowCount = 4;
         summaryLayoutPanel.RowStyles.Add(new RowStyle());
@@ -461,7 +596,7 @@ partial class Form1
         summaryLayoutPanel.RowStyles.Add(new RowStyle());
         summaryLayoutPanel.RowStyles.Add(new RowStyle());
         summaryLayoutPanel.Size = new Size(934, 128);
-        summaryLayoutPanel.TabIndex = 5;
+        summaryLayoutPanel.TabIndex = 6;
         //
         // modeLabel
         //
@@ -542,23 +677,23 @@ partial class Form1
         // logLabel
         //
         logLabel.AutoSize = true;
-        logLabel.Location = new Point(15, 435);
+        logLabel.Location = new Point(15, 569);
         logLabel.Margin = new Padding(3, 12, 3, 6);
         logLabel.Name = "logLabel";
         logLabel.Size = new Size(40, 15);
-        logLabel.TabIndex = 6;
+        logLabel.TabIndex = 7;
         logLabel.Text = "Raport";
         //
         // logTextBox
         //
         logTextBox.Dock = DockStyle.Fill;
-        logTextBox.Location = new Point(15, 456);
+        logTextBox.Location = new Point(15, 590);
         logTextBox.Multiline = true;
         logTextBox.Name = "logTextBox";
         logTextBox.ReadOnly = true;
         logTextBox.ScrollBars = ScrollBars.Both;
-        logTextBox.Size = new Size(934, 213);
-        logTextBox.TabIndex = 7;
+        logTextBox.Size = new Size(934, 79);
+        logTextBox.TabIndex = 8;
         logTextBox.WordWrap = false;
         //
         // refreshTimer
@@ -570,9 +705,9 @@ partial class Form1
         //
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        ClientSize = new Size(964, 684);
+        ClientSize = new Size(964, 820);
         Controls.Add(rootLayoutPanel);
-        MinimumSize = new Size(980, 720);
+        MinimumSize = new Size(980, 856);
         Name = "Form1";
         StartPosition = FormStartPosition.CenterScreen;
         Text = "ADB przez WireGuard";
@@ -584,6 +719,8 @@ partial class Form1
         modeFlowLayoutPanel.PerformLayout();
         remoteSettingsLayoutPanel.ResumeLayout(false);
         remoteSettingsLayoutPanel.PerformLayout();
+        relaySettingsLayoutPanel.ResumeLayout(false);
+        relaySettingsLayoutPanel.PerformLayout();
         actionsPanel.ResumeLayout(false);
         actionsPanel.PerformLayout();
         summaryLayoutPanel.ResumeLayout(false);
