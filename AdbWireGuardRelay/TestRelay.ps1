@@ -33,6 +33,16 @@ try
         -Method Post `
         -ContentType "application/json" `
         -Body (@{ pairCode = $session.pairCode; clientName = "Client test" } | ConvertTo-Json)
+    $hostHeartbeat = Invoke-RestMethod `
+        -Uri ("http://127.0.0.1:5127/api/v1/relay/sessions/{0}/heartbeat" -f $session.sessionId) `
+        -Method Post `
+        -ContentType "application/json" `
+        -Body (@{ role = "host"; resumeToken = $session.hostResumeToken } | ConvertTo-Json)
+    $clientHeartbeat = Invoke-RestMethod `
+        -Uri ("http://127.0.0.1:5127/api/v1/relay/sessions/{0}/heartbeat" -f $session.sessionId) `
+        -Method Post `
+        -ContentType "application/json" `
+        -Body (@{ role = "client"; resumeToken = $claim.clientResumeToken } | ConvertTo-Json)
     $status = Invoke-RestMethod `
         -Uri ("http://127.0.0.1:5127/api/v1/relay/sessions/{0}" -f $session.sessionId) `
         -Headers @{ Authorization = "Bearer test-host-token" }
@@ -41,6 +51,8 @@ try
         health = $health
         session = $session
         claim = $claim
+        hostHeartbeat = $hostHeartbeat
+        clientHeartbeat = $clientHeartbeat
         status = $status
     } | ConvertTo-Json -Depth 8
 }

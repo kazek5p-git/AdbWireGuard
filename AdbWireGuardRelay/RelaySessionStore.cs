@@ -39,6 +39,7 @@ public sealed class RelaySessionStore
             DeviceName: string.IsNullOrWhiteSpace(deviceName) ? "Android host" : deviceName.Trim(),
             PairCode: CreatePairCode(),
             HostConnectToken: CreateSecretToken(),
+            HostResumeToken: CreateSecretToken(),
             ExpiresAtUtc: expiresAt);
 
         if (!_sessions.TryAdd(session.Id, session))
@@ -52,8 +53,11 @@ public sealed class RelaySessionStore
             session.Id,
             session.PairCode,
             session.HostConnectToken,
+            session.HostResumeToken,
             session.ExpiresAtUtc,
-            (int)(session.ExpiresAtUtc - DateTimeOffset.UtcNow).TotalSeconds);
+            (int)(session.ExpiresAtUtc - DateTimeOffset.UtcNow).TotalSeconds,
+            _options.ReconnectGraceSeconds,
+            _options.HeartbeatIntervalSeconds);
     }
 
     public ClaimSessionResponse ClaimSession(string pairCode, string? clientName)
@@ -86,18 +90,62 @@ public sealed class RelaySessionStore
 
             session.ClientName = string.IsNullOrWhiteSpace(clientName) ? "Client" : clientName.Trim();
             session.ClientConnectToken = CreateSecretToken();
-            if (session.HostSocket is null || session.HostSocket.State != WebSocketState.Open)
-            {
-                session.Status = RelaySessionStatus.PendingHost;
-            }
-            else
-            {
-                session.Status = RelaySessionStatus.WaitingForClient;
-            }
+            session.ClientResumeToken = CreateSecretToken();
+            session.ClientLastSeenUtc = DateTimeOffset.UtcNow;
+            session.ClientReconnectDeadlineUtc = null;
+            session.Status = GetComputedStatus(session);
 
             _logger.LogInformation("Claimed relay session {SessionId} by {ClientName}", session.Id, session.ClientName);
 
-            return new ClaimSessionResponse(session.Id, session.ClientConnectToken, session.ExpiresAtUtc);
+            return new ClaimSessionResponse(
+                session.Id,
+                session.ClientConnectToken,
+                session.ClientResumeToken,
+                session.ExpiresAtUtc,
+                _options.ReconnectGraceSeconds,
+                _options.HeartbeatIntervalSeconds);
+        }
+    }
+
+    public SessionStatusResponse RecordHeartbeat(Guid sessionId, string role, string resumeToken)
+    {
+        var session = GetSession(sessionId);
+        lock (session.SyncRoot)
+        {
+            EnsureSessionUsable(session);
+            var now = DateTimeOffset.UtcNow;
+            if (string.Equals(role, "host", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(session.HostResumeToken, resumeToken, StringComparison.Ordinal))
+                {
+                    throw new UnauthorizedAccessException("Nieprawidlowy token hosta do heartbeat.");
+                }
+
+                session.HostLastSeenUtc = now;
+                session.HostReconnectDeadlineUtc = session.HostSocket?.State == WebSocketState.Open
+                    ? null
+                    : now.AddSeconds(_options.ReconnectGraceSeconds);
+            }
+            else if (string.Equals(role, "client", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(session.ClientResumeToken) ||
+                    !string.Equals(session.ClientResumeToken, resumeToken, StringComparison.Ordinal))
+                {
+                    throw new UnauthorizedAccessException("Nieprawidlowy token klienta do heartbeat.");
+                }
+
+                session.ClientLastSeenUtc = now;
+                session.ClientReconnectDeadlineUtc = session.ClientSocket?.State == WebSocketState.Open
+                    ? null
+                    : now.AddSeconds(_options.ReconnectGraceSeconds);
+            }
+            else
+            {
+                throw new InvalidOperationException("Nieprawidlowa rola heartbeat.");
+            }
+
+            session.Status = GetComputedStatus(session);
+            return ToStatusResponse(session);
         }
     }
 
@@ -127,7 +175,7 @@ public sealed class RelaySessionStore
         lock (session.SyncRoot)
         {
             EnsureSessionUsable(session);
-            if (!string.Equals(session.HostConnectToken, connectToken, StringComparison.Ordinal))
+            if (!IsRoleTokenValid(session.HostConnectToken, session.HostResumeToken, connectToken))
             {
                 throw new UnauthorizedAccessException("Nieprawidlowy token hosta.");
             }
@@ -138,9 +186,9 @@ public sealed class RelaySessionStore
             }
 
             session.HostSocket = socket;
-            session.Status = string.IsNullOrWhiteSpace(session.ClientConnectToken)
-                ? RelaySessionStatus.PendingHost
-                : RelaySessionStatus.WaitingForClient;
+            session.HostLastSeenUtc = DateTimeOffset.UtcNow;
+            session.HostReconnectDeadlineUtc = null;
+            session.Status = GetComputedStatus(session);
             TryStartRelay(session);
         }
     }
@@ -152,7 +200,7 @@ public sealed class RelaySessionStore
         {
             EnsureSessionUsable(session);
             if (string.IsNullOrWhiteSpace(session.ClientConnectToken) ||
-                !string.Equals(session.ClientConnectToken, connectToken, StringComparison.Ordinal))
+                !IsRoleTokenValid(session.ClientConnectToken, session.ClientResumeToken, connectToken))
             {
                 throw new UnauthorizedAccessException("Nieprawidlowy token klienta.");
             }
@@ -163,16 +211,28 @@ public sealed class RelaySessionStore
             }
 
             session.ClientSocket = socket;
-            session.Status = RelaySessionStatus.WaitingForClient;
+            session.ClientLastSeenUtc = DateTimeOffset.UtcNow;
+            session.ClientReconnectDeadlineUtc = null;
+            session.Status = GetComputedStatus(session);
             TryStartRelay(session);
         }
+    }
+
+    public void MarkHostDisconnected(Guid sessionId, WebSocket socket)
+    {
+        MarkRoleDisconnected(sessionId, socket, isHost: true);
+    }
+
+    public void MarkClientDisconnected(Guid sessionId, WebSocket socket)
+    {
+        MarkRoleDisconnected(sessionId, socket, isHost: false);
     }
 
     public IReadOnlyList<Guid> CleanupExpiredSessions()
     {
         var now = DateTimeOffset.UtcNow;
         var expired = _sessions.Values
-            .Where(session => session.ExpiresAtUtc <= now || session.Status is RelaySessionStatus.Closed or RelaySessionStatus.Expired)
+            .Where(session => ShouldRemoveSession(session, now))
             .Select(session => session.Id)
             .ToList();
 
@@ -234,14 +294,14 @@ public sealed class RelaySessionStore
         {
             session.RelayStarted = true;
             session.Status = RelaySessionStatus.Active;
-            _ = Task.Run(() => RelayAsync(session));
+            var hostSocket = session.HostSocket;
+            var clientSocket = session.ClientSocket;
+            _ = Task.Run(() => RelayAsync(session, hostSocket, clientSocket));
         }
     }
 
-    private async Task RelayAsync(RelaySession session)
+    private async Task RelayAsync(RelaySession session, WebSocket hostSocket, WebSocket clientSocket)
     {
-        var hostSocket = session.HostSocket!;
-        var clientSocket = session.ClientSocket!;
         _logger.LogInformation("Relay started for session {SessionId}", session.Id);
 
         try
@@ -256,7 +316,15 @@ public sealed class RelaySessionStore
         }
         finally
         {
-            await CloseSocketsAndRemoveAsync(session, "Relay finished");
+            lock (session.SyncRoot)
+            {
+                if (ReferenceEquals(session.HostSocket, hostSocket) &&
+                    ReferenceEquals(session.ClientSocket, clientSocket))
+                {
+                    session.RelayStarted = false;
+                    session.Status = GetComputedStatus(session);
+                }
+            }
         }
     }
 
@@ -271,6 +339,22 @@ public sealed class RelaySessionStore
                 _logger.LogInformation("WebSocket close frame in {Direction} for session {SessionId}", direction, sessionId);
                 break;
             }
+
+             if (_sessions.TryGetValue(sessionId, out var session))
+             {
+                 lock (session.SyncRoot)
+                 {
+                     var now = DateTimeOffset.UtcNow;
+                     if (ReferenceEquals(source, session.HostSocket))
+                     {
+                         session.HostLastSeenUtc = now;
+                     }
+                     else if (ReferenceEquals(source, session.ClientSocket))
+                     {
+                         session.ClientLastSeenUtc = now;
+                     }
+                 }
+             }
 
             await destination.SendAsync(
                 buffer.AsMemory(0, result.Count),
@@ -288,6 +372,7 @@ public sealed class RelaySessionStore
         }
 
         session.Status = RelaySessionStatus.Closed;
+        session.RelayStarted = false;
         await CloseSocketIfOpenAsync(session.HostSocket);
         await CloseSocketIfOpenAsync(session.ClientSocket);
     }
@@ -330,27 +415,155 @@ public sealed class RelaySessionStore
         return pairCode.Trim().Replace("-", string.Empty).ToUpperInvariant();
     }
 
+    private bool ShouldRemoveSession(RelaySession session, DateTimeOffset now)
+    {
+        lock (session.SyncRoot)
+        {
+            if (session.Status is RelaySessionStatus.Closed or RelaySessionStatus.Expired)
+            {
+                return true;
+            }
+
+            if (session.ExpiresAtUtc <= now)
+            {
+                session.Status = RelaySessionStatus.Expired;
+                return true;
+            }
+
+            if (session.HostReconnectDeadlineUtc.HasValue &&
+                session.HostReconnectDeadlineUtc.Value <= now &&
+                session.HostSocket?.State != WebSocketState.Open)
+            {
+                session.Status = RelaySessionStatus.Expired;
+                return true;
+            }
+
+            if (session.ClientReconnectDeadlineUtc.HasValue &&
+                session.ClientReconnectDeadlineUtc.Value <= now &&
+                session.ClientSocket?.State != WebSocketState.Open)
+            {
+                session.Status = RelaySessionStatus.Expired;
+                return true;
+            }
+
+            if (session.HostLastSeenUtc.HasValue &&
+                session.HostSocket?.State != WebSocketState.Open &&
+                (now - session.HostLastSeenUtc.Value).TotalSeconds > _options.HeartbeatStaleSeconds &&
+                string.IsNullOrWhiteSpace(session.ClientConnectToken))
+            {
+                session.Status = RelaySessionStatus.Expired;
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+    private void MarkRoleDisconnected(Guid sessionId, WebSocket socket, bool isHost)
+    {
+        if (!_sessions.TryGetValue(sessionId, out var session))
+        {
+            return;
+        }
+
+        lock (session.SyncRoot)
+        {
+            var now = DateTimeOffset.UtcNow;
+            if (isHost)
+            {
+                if (!ReferenceEquals(session.HostSocket, socket))
+                {
+                    return;
+                }
+
+                session.HostSocket = null;
+                session.HostLastSeenUtc = now;
+                session.HostReconnectDeadlineUtc = now.AddSeconds(_options.ReconnectGraceSeconds);
+            }
+            else
+            {
+                if (!ReferenceEquals(session.ClientSocket, socket))
+                {
+                    return;
+                }
+
+                session.ClientSocket = null;
+                session.ClientLastSeenUtc = now;
+                session.ClientReconnectDeadlineUtc = now.AddSeconds(_options.ReconnectGraceSeconds);
+            }
+
+            session.RelayStarted = false;
+            session.Status = GetComputedStatus(session);
+        }
+    }
+
+    private static bool IsRoleTokenValid(string? connectToken, string? resumeToken, string presentedToken)
+    {
+        return (!string.IsNullOrWhiteSpace(connectToken) && string.Equals(connectToken, presentedToken, StringComparison.Ordinal)) ||
+               (!string.IsNullOrWhiteSpace(resumeToken) && string.Equals(resumeToken, presentedToken, StringComparison.Ordinal));
+    }
+
+    private static RelaySessionStatus GetComputedStatus(RelaySession session)
+    {
+        if (session.Status is RelaySessionStatus.Closed or RelaySessionStatus.Expired)
+        {
+            return session.Status;
+        }
+
+        var hostConnected = session.HostSocket?.State == WebSocketState.Open;
+        var clientConnected = session.ClientSocket?.State == WebSocketState.Open;
+        var clientClaimed = !string.IsNullOrWhiteSpace(session.ClientConnectToken);
+
+        if (hostConnected && clientConnected)
+        {
+            return RelaySessionStatus.Active;
+        }
+
+        if (!clientClaimed)
+        {
+            return hostConnected ? RelaySessionStatus.WaitingForClient : RelaySessionStatus.PendingHost;
+        }
+
+        if (hostConnected && !clientConnected)
+        {
+            return RelaySessionStatus.WaitingForClientReconnect;
+        }
+
+        if (!hostConnected && clientConnected)
+        {
+            return RelaySessionStatus.WaitingForHostReconnect;
+        }
+
+        return RelaySessionStatus.WaitingForReconnect;
+    }
+
     private static SessionStatusResponse ToStatusResponse(RelaySession session) =>
         new(
             session.Id,
             session.DeviceName,
-            session.Status.ToString(),
+            GetComputedStatus(session).ToString(),
             session.ExpiresAtUtc,
             session.HostSocket?.State == WebSocketState.Open,
             session.ClientSocket?.State == WebSocketState.Open,
             session.RelayStarted,
-            session.ClaimAttempts);
+            session.ClaimAttempts,
+            session.HostLastSeenUtc,
+            session.ClientLastSeenUtc,
+            session.HostReconnectDeadlineUtc,
+            session.ClientReconnectDeadlineUtc);
 
     private sealed class RelaySession
     {
-        public RelaySession(Guid Id, string HostToken, string DeviceName, string PairCode, string HostConnectToken, DateTimeOffset ExpiresAtUtc)
+        public RelaySession(Guid Id, string HostToken, string DeviceName, string PairCode, string HostConnectToken, string HostResumeToken, DateTimeOffset ExpiresAtUtc)
         {
             this.Id = Id;
             this.HostToken = HostToken;
             this.DeviceName = DeviceName;
             this.PairCode = PairCode;
             this.HostConnectToken = HostConnectToken;
+            this.HostResumeToken = HostResumeToken;
             this.ExpiresAtUtc = ExpiresAtUtc;
+            this.HostLastSeenUtc = DateTimeOffset.UtcNow;
         }
 
         public Guid Id { get; }
@@ -358,14 +571,20 @@ public sealed class RelaySessionStore
         public string DeviceName { get; }
         public string PairCode { get; }
         public string HostConnectToken { get; }
+        public string HostResumeToken { get; }
         public DateTimeOffset ExpiresAtUtc { get; }
         public string? ClientConnectToken { get; set; }
+        public string? ClientResumeToken { get; set; }
         public string? ClientName { get; set; }
         public RelaySessionStatus Status { get; set; } = RelaySessionStatus.PendingHost;
         public int ClaimAttempts { get; set; }
         public bool RelayStarted { get; set; }
         public WebSocket? HostSocket { get; set; }
         public WebSocket? ClientSocket { get; set; }
+        public DateTimeOffset? HostLastSeenUtc { get; set; }
+        public DateTimeOffset? ClientLastSeenUtc { get; set; }
+        public DateTimeOffset? HostReconnectDeadlineUtc { get; set; }
+        public DateTimeOffset? ClientReconnectDeadlineUtc { get; set; }
         public object SyncRoot { get; } = new();
     }
 }

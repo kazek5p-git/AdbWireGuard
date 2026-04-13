@@ -10,6 +10,9 @@ public sealed record RelayOptions
     public int CleanupIntervalSeconds { get; init; } = 30;
     public int MaxSessionsPerHost { get; init; } = 3;
     public int MaxPendingClaimAttempts { get; init; } = 10;
+    public int ReconnectGraceSeconds { get; init; } = 90;
+    public int HeartbeatIntervalSeconds { get; init; } = 15;
+    public int HeartbeatStaleSeconds { get; init; } = 45;
 
     public static RelayOptions FromConfiguration(IConfiguration configuration)
     {
@@ -49,6 +52,21 @@ public sealed record RelayOptions
         if (options.MaxPendingClaimAttempts < 1)
         {
             options = options with { MaxPendingClaimAttempts = 10 };
+        }
+
+        if (options.ReconnectGraceSeconds < 5)
+        {
+            options = options with { ReconnectGraceSeconds = 90 };
+        }
+
+        if (options.HeartbeatIntervalSeconds < 5)
+        {
+            options = options with { HeartbeatIntervalSeconds = 15 };
+        }
+
+        if (options.HeartbeatStaleSeconds < options.HeartbeatIntervalSeconds)
+        {
+            options = options with { HeartbeatStaleSeconds = Math.Max(options.HeartbeatIntervalSeconds * 3, 45) };
         }
 
         return options;

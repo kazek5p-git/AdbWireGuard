@@ -1652,6 +1652,8 @@ public partial class Form1 : Form
                     $"Kod sesji: {response.PairCode}",
                     $"SessionId: {response.SessionId}",
                     $"Wygasa: {response.ExpiresAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
+                    $"Grace reconnect: {response.ReconnectGraceSeconds}s",
+                    $"Heartbeat: co {response.HeartbeatIntervalSeconds}s",
                     $"Status API: {status?.Status ?? "brak potwierdzenia"}",
                     $"Host connected: {status?.HostConnected.ToString() ?? "brak danych"}",
                     $"Client connected: {status?.ClientConnected.ToString() ?? "brak danych"}",
@@ -1682,6 +1684,8 @@ public partial class Form1 : Form
                     $"Kod sesji: {pairCode}",
                     $"SessionId: {response.SessionId}",
                     $"Wygasa: {response.ExpiresAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
+                    $"Grace reconnect: {response.ReconnectGraceSeconds}s",
+                    $"Heartbeat: co {response.HeartbeatIntervalSeconds}s",
                     string.Empty,
                     "Sesja została zaakceptowana przez broker. Tunel ADB przez relay będzie dopięty w kolejnym etapie GUI."
                 })

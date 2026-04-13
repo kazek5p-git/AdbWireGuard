@@ -153,15 +153,21 @@ internal sealed record RelayCreateSessionResponse(
     Guid SessionId,
     string PairCode,
     string HostConnectToken,
+    string HostResumeToken,
     DateTimeOffset ExpiresAtUtc,
-    int TtlSeconds);
+    int TtlSeconds,
+    int ReconnectGraceSeconds,
+    int HeartbeatIntervalSeconds);
 
 internal sealed record RelayClaimSessionRequest(string PairCode, string ClientName);
 
 internal sealed record RelayClaimSessionResponse(
     Guid SessionId,
     string ClientConnectToken,
-    DateTimeOffset ExpiresAtUtc);
+    string ClientResumeToken,
+    DateTimeOffset ExpiresAtUtc,
+    int ReconnectGraceSeconds,
+    int HeartbeatIntervalSeconds);
 
 internal sealed record RelaySessionStatusResponse(
     Guid SessionId,
@@ -171,6 +177,10 @@ internal sealed record RelaySessionStatusResponse(
     bool HostConnected,
     bool ClientConnected,
     bool RelayStarted,
-    int ClaimAttempts);
+    int ClaimAttempts,
+    DateTimeOffset? HostLastSeenUtc,
+    DateTimeOffset? ClientLastSeenUtc,
+    DateTimeOffset? HostReconnectDeadlineUtc,
+    DateTimeOffset? ClientReconnectDeadlineUtc);
 
 internal sealed record RelayErrorResponse(string Error);

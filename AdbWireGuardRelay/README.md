@@ -6,6 +6,8 @@ Minimalny broker sesji dla `ADB over WireGuard`.
 
 - tworzy krótkotrwałe sesje relay
 - generuje jednorazowy kod parowania
+- wydaje token wznowienia dla hosta i klienta
+- trzyma krótki grace period na reconnect
 - wpina hosta i klienta przez WebSocket
 - przekazuje surowe dane między obiema stronami
 
@@ -77,17 +79,32 @@ Body:
 ### WebSocket hosta
 
 ```text
-/ws/host/{sessionId}?token={hostConnectToken}
+/ws/host/{sessionId}?token={hostConnectToken|hostResumeToken}
 ```
 
 ### WebSocket klienta
 
 ```text
-/ws/client/{sessionId}?token={clientConnectToken}
+/ws/client/{sessionId}?token={clientConnectToken|clientResumeToken}
+```
+
+### Heartbeat / odświeżenie sesji
+
+```text
+POST /api/v1/relay/sessions/{sessionId}/heartbeat
+```
+
+Body:
+
+```json
+{
+  "role": "host",
+  "resumeToken": "token-wznowienia"
+}
 ```
 
 ## Następny etap
 
-- dodać klienta relay do GUI `AdbWireGuardGui`
-- dodać status sesji i ręczne zamykanie
+- dopiąć w GUI prawdziwy tunel ADB po WebSocket
+- dodać automatyczny reconnect host/client z użyciem resume token
 - dodać bezpieczne wdrożenie za reverse proxy na `kazpar`

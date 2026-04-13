@@ -56,6 +56,26 @@ app.MapPost("/api/v1/relay/claim", (ClaimSessionRequest request, RelaySessionSto
     }
 });
 
+app.MapPost("/api/v1/relay/sessions/{sessionId:guid}/heartbeat", (Guid sessionId, HeartbeatRequest request, RelaySessionStore store) =>
+{
+    try
+    {
+        return Results.Ok(store.RecordHeartbeat(sessionId, request.Role, request.ResumeToken));
+    }
+    catch (KeyNotFoundException ex)
+    {
+        return Results.NotFound(new ErrorResponse(ex.Message));
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return Results.Unauthorized();
+    }
+    catch (InvalidOperationException ex)
+    {
+        return Results.BadRequest(new ErrorResponse(ex.Message));
+    }
+});
+
 app.MapGet("/api/v1/relay/sessions/{sessionId:guid}", (Guid sessionId, HttpContext context, RelaySessionStore store) =>
 {
     var hostToken = ReadBearerToken(context);
@@ -114,9 +134,11 @@ app.Map("/ws/host/{sessionId:guid}", async (HttpContext context, Guid sessionId,
 
     var token = context.Request.Query["token"].ToString();
     using var socket = await context.WebSockets.AcceptWebSocketAsync();
+    var attached = false;
     try
     {
         store.AttachHost(sessionId, token, socket);
+        attached = true;
         await WaitUntilSocketClosesAsync(socket, context.RequestAborted);
     }
     catch (KeyNotFoundException ex)
@@ -130,6 +152,13 @@ app.Map("/ws/host/{sessionId:guid}", async (HttpContext context, Guid sessionId,
     catch (InvalidOperationException ex)
     {
         await CloseWithErrorAsync(socket, ex.Message);
+    }
+    finally
+    {
+        if (attached)
+        {
+            store.MarkHostDisconnected(sessionId, socket);
+        }
     }
 });
 
@@ -144,9 +173,11 @@ app.Map("/ws/client/{sessionId:guid}", async (HttpContext context, Guid sessionI
 
     var token = context.Request.Query["token"].ToString();
     using var socket = await context.WebSockets.AcceptWebSocketAsync();
+    var attached = false;
     try
     {
         store.AttachClient(sessionId, token, socket);
+        attached = true;
         await WaitUntilSocketClosesAsync(socket, context.RequestAborted);
     }
     catch (KeyNotFoundException ex)
@@ -160,6 +191,13 @@ app.Map("/ws/client/{sessionId:guid}", async (HttpContext context, Guid sessionI
     catch (InvalidOperationException ex)
     {
         await CloseWithErrorAsync(socket, ex.Message);
+    }
+    finally
+    {
+        if (attached)
+        {
+            store.MarkClientDisconnected(sessionId, socket);
+        }
     }
 });
 
