@@ -9,3 +9,5 @@ publish-self-contained-v4/
 *.suo
 *.pdb
 AdbWireGuard-session-handoff.txt
+relay-test-stdout.txt
+relay-test-stderr.txt
