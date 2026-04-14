@@ -451,6 +451,21 @@ public partial class Form1 : Form
         relaySettingsLayoutPanel.Visible = isRelayMode;
         relayHostTokenLabel.Visible = false;
         relayHostTokenTextBox.Visible = false;
+        relayPairCodeLabel.Text = isRelayMode
+            ? isRelayClientMode
+                ? "Kod połączenia od drugiej strony"
+                : "Kod połączenia"
+            : "Kod połączenia";
+        relayPairCodeTextBox.PlaceholderText = isRelayMode
+            ? isRelayClientMode
+                ? "Wpisz otrzymany kod połączenia"
+                : "Zostaw puste, aby utworzyć nowy kod"
+            : "Wpisz kod, aby dołączyć do połączenia";
+        relayNameLabel.Text = isRelayMode
+            ? isRelayClientMode
+                ? "Nazwa tego klienta"
+                : "Nazwa tego hosta"
+            : "Nazwa hosta / klienta";
 
         _settings.Mode = isRelayMode ? "relay" : isDirectRemoteMode ? "remote" : "local";
     }
