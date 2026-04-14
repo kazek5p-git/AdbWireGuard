@@ -91,6 +91,8 @@ public partial class Form1 : Form
     private string _relayLastName = string.Empty;
     private string _relayLastSessionStatus = string.Empty;
     private string _relayLastExpiresAtText = string.Empty;
+    private RelayHostTunnel? _relayHostTunnel;
+    private RelayClientProxy? _relayClientProxy;
 
     public Form1()
     {
@@ -148,6 +150,7 @@ public partial class Form1 : Form
 
     private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
     {
+        DisposeRelayTransportAsync().GetAwaiter().GetResult();
         SaveSettings();
     }
 
@@ -352,8 +355,8 @@ public partial class Form1 : Form
 
         primaryActionButton.Enabled = !_isBusy && packageExists;
         stopButton.Enabled = !_isBusy && packageExists && (!IsDirectRemoteMode) &&
-            (!IsRelayMode || _relayOwnedSessionId.HasValue);
-        stopButton.Visible = !IsDirectRemoteMode && (!IsRelayMode || _relayOwnedSessionId.HasValue);
+            (!IsRelayMode || _relayOwnedSessionId.HasValue || _relayClientProxy is not null);
+        stopButton.Visible = !IsDirectRemoteMode && (!IsRelayMode || _relayOwnedSessionId.HasValue || _relayClientProxy is not null);
         refreshButton.Enabled = !_isBusy;
         testConnectionButton.Enabled = !_isBusy;
         updateButton.Enabled = !_isBusy && packageExists;
@@ -602,6 +605,105 @@ public partial class Form1 : Form
         }
     }
 
+    private async Task EnsureLocalAdbReadyForRelayHostAsync()
+    {
+        var startScriptPath = Path.Combine(PackageRoot, "1-Start-ADB-Server-Over-WireGuard.ps1");
+        if (!File.Exists(startScriptPath))
+        {
+            throw new InvalidOperationException("Nie znaleziono skryptu startu lokalnego ADB dla trybu relay.");
+        }
+
+        var result = await RunPowerShellScriptAsync(
+            startScriptPath,
+            $"-SkipFirewallRule -SkipMikroTikForward -Port 5037",
+            CancellationToken.None);
+
+        if (result.ExitCode != 0)
+        {
+            var details = BuildRemoteResultText("127.0.0.1", "relay-host-start", result.Stdout, result.Stderr, result.ExitCode);
+            throw new InvalidOperationException($"Nie udalo sie uruchomic lokalnego ADB dla hosta relay.{Environment.NewLine}{details}");
+        }
+    }
+
+    private async Task<CommandExecutionResult> RunRelayClientCommandAsync(int localPort, string adbCommand)
+    {
+        return await RunPowerShellScriptAsync(
+            RemoteCommandScriptPath,
+            $"-ServerHost \"127.0.0.1\" -Port {localPort} -AdbCommand \"{adbCommand.Replace("\"", "\\\"")}\"",
+            CancellationToken.None);
+    }
+
+    private async Task<CommandExecutionResult> RunPowerShellScriptAsync(string scriptPath, string arguments, CancellationToken cancellationToken)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoLogo -NoProfile -ExecutionPolicy Bypass -File \"{scriptPath}\" {arguments}",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = PackageRoot,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            }
+        };
+
+        ApplyNotificationEnvironment(process.StartInfo.EnvironmentVariables);
+
+        process.Start();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync(cancellationToken);
+
+        return new CommandExecutionResult(
+            process.ExitCode,
+            await stdoutTask,
+            await stderrTask);
+    }
+
+    private async Task DisposeRelayTransportAsync()
+    {
+        if (_relayClientProxy is not null)
+        {
+            await _relayClientProxy.DisposeAsync();
+            _relayClientProxy = null;
+        }
+
+        if (_relayHostTunnel is not null)
+        {
+            await _relayHostTunnel.DisposeAsync();
+            _relayHostTunnel = null;
+        }
+    }
+
+    private void AppendRelayRuntimeMessage(string message)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        void Update()
+        {
+            _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            var current = _lastRelayLogText?.TrimEnd() ?? string.Empty;
+            _lastRelayLogText = string.IsNullOrWhiteSpace(current)
+                ? message.Trim()
+                : $"{current}{Environment.NewLine}{Environment.NewLine}{message.Trim()}";
+            _relayLastSessionStatus = message;
+            RefreshTimerTick(this, EventArgs.Empty);
+        }
+
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(Update));
+            return;
+        }
+
+        Update();
+    }
+
     private async Task RunRelayActionAsync()
     {
         var relayServerUrl = RelayApiClient.NormalizeServerUrl(relayServerTextBox.Text);
@@ -655,6 +757,8 @@ public partial class Form1 : Form
         {
             if (string.IsNullOrWhiteSpace(pairCode))
             {
+                await EnsureLocalAdbReadyForRelayHostAsync();
+
                 var hostToken = relayHostTokenTextBox.Text.Trim();
                 var response = await _relayApiClient.CreateSessionAsync(
                     relayServerUrl,
@@ -674,8 +778,19 @@ public partial class Form1 : Form
                 }
                 catch
                 {
-                    // Session was created already; status fetch is best-effort in this first stage.
+                    // Best effort only.
                 }
+
+                await DisposeRelayTransportAsync();
+                _relayHostTunnel = new RelayHostTunnel(
+                    _relayApiClient,
+                    relayServerUrl,
+                    response.SessionId,
+                    response.HostConnectToken,
+                    response.HostResumeToken,
+                    response.HeartbeatIntervalSeconds,
+                    AppendRelayRuntimeMessage);
+                _relayHostTunnel.Start();
 
                 _relayOwnedSessionId = response.SessionId;
                 _relayOwnedServerUrl = relayServerUrl;
@@ -692,7 +807,8 @@ public partial class Form1 : Form
                     relayServerUrl,
                     relayName,
                     response,
-                    status);
+                    status,
+                    "Host tunnel jest aktywny. Druga strona moze dolaczyc kodem sesji.");
 
                 SetStatus($"Sesja relay gotowa. Kod: {response.PairCode}");
             }
@@ -703,6 +819,21 @@ public partial class Form1 : Form
                     pairCode,
                     relayName,
                     CancellationToken.None);
+
+                await DisposeRelayTransportAsync();
+                var adbCommand = NormalizeRemoteCommand();
+                _relayClientProxy = new RelayClientProxy(
+                    _relayApiClient,
+                    relayServerUrl,
+                    response.SessionId,
+                    response.ClientConnectToken,
+                    response.ClientResumeToken,
+                    response.HeartbeatIntervalSeconds,
+                    AppendRelayRuntimeMessage);
+                _relayClientProxy.Start();
+                await Task.Delay(300);
+
+                var commandResult = await RunRelayClientCommandAsync(_relayClientProxy.LocalPort, adbCommand);
 
                 _relayLastSessionId = response.SessionId;
                 _relayLastPairCode = pairCode;
@@ -716,9 +847,22 @@ public partial class Form1 : Form
                     relayServerUrl,
                     relayName,
                     pairCode,
-                    response);
+                    response,
+                    _relayClientProxy.LocalPort,
+                    adbCommand,
+                    commandResult.Stdout,
+                    commandResult.Stderr,
+                    commandResult.ExitCode);
 
-                SetStatus($"Kod {pairCode} został zaakceptowany przez relay.");
+                serverHostTextBox.Text = "127.0.0.1";
+                adbCommandTextBox.Text = adbCommand;
+                _settings.RemoteServerHost = "127.0.0.1";
+                _settings.RemoteAdbCommand = adbCommand;
+                SaveSettings();
+
+                SetStatus(commandResult.ExitCode == 0
+                    ? $"Sesja relay dziala. Lokalny port: {_relayClientProxy.LocalPort}"
+                    : $"Sesja relay utworzona, ale komenda ADB zwrocila blad na porcie {_relayClientProxy.LocalPort}.");
             }
         }
         catch (Exception ex)
@@ -741,41 +885,49 @@ public partial class Form1 : Form
 
     private async Task CloseRelaySessionAsync()
     {
-        if (!_relayOwnedSessionId.HasValue ||
-            string.IsNullOrWhiteSpace(_relayOwnedServerUrl) ||
-            string.IsNullOrWhiteSpace(_relayOwnedHostToken))
+        if (!_relayOwnedSessionId.HasValue &&
+            _relayClientProxy is null &&
+            _relayHostTunnel is null)
         {
-            SetStatus("Brak aktywnej sesji relay utworzonej na tym komputerze.");
+            SetStatus("Brak aktywnej sesji relay na tym komputerze.");
             return;
         }
-
-        var sessionId = _relayOwnedSessionId.Value;
-        var serverUrl = _relayOwnedServerUrl;
 
         FocusStatus();
         SetBusy(true);
         SetStatus("Zamykanie sesji relay...");
+        var serverUrlForError = _relayOwnedServerUrl;
 
         try
         {
-            await _relayApiClient.CloseSessionAsync(
-                serverUrl,
-                sessionId,
-                _relayOwnedHostToken,
-                CancellationToken.None);
+            var sessionId = _relayOwnedSessionId;
+            var serverUrl = _relayOwnedServerUrl;
+
+            if (sessionId.HasValue &&
+                !string.IsNullOrWhiteSpace(serverUrl) &&
+                !string.IsNullOrWhiteSpace(_relayOwnedHostToken))
+            {
+                await _relayApiClient.CloseSessionAsync(
+                    serverUrl,
+                    sessionId.Value,
+                    _relayOwnedHostToken,
+                    CancellationToken.None);
+            }
+
+            await DisposeRelayTransportAsync();
 
             _relayOwnedSessionId = null;
             _relayOwnedHostToken = string.Empty;
             _relayOwnedServerUrl = string.Empty;
             _relayLastSessionStatus = "closed";
             _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            _lastRelayLogText = BuildRelayClosedText(sessionId, serverUrl);
+            _lastRelayLogText = BuildRelayClosedText(sessionId ?? Guid.Empty, serverUrl);
             SetStatus("Sesja relay została zamknięta.");
         }
         catch (Exception ex)
         {
             _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            _lastRelayLogText = BuildRelayErrorText(serverUrl, _relayLastName, _relayLastPairCode, ex);
+            _lastRelayLogText = BuildRelayErrorText(serverUrlForError, _relayLastName, _relayLastPairCode, ex);
             SetStatus($"Nie udało się zamknąć sesji relay: {ex.Message}");
         }
         finally
@@ -790,6 +942,45 @@ public partial class Form1 : Form
     {
         if (IsRelayMode)
         {
+            if (_relayClientProxy is not null)
+            {
+                var localPort = _relayClientProxy.LocalPort;
+                SetBusy(true);
+                SetStatus($"Sprawdzanie lokalnego proxy relay na porcie {localPort}...");
+
+                try
+                {
+                    var tcpOk = await TestTcpAsync("127.0.0.1", localPort);
+                    _lastConnectionTestText = string.Join(
+                        Environment.NewLine,
+                        new[]
+                        {
+                            "Test klienta relay",
+                            "Adres: 127.0.0.1",
+                            $"Port loopback: {localPort}",
+                            $"TCP {localPort}: {(tcpOk ? "OK" : "brak połączenia")}"
+                        });
+                    _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    SetStatus(tcpOk
+                        ? $"Lokalny proxy relay odpowiada na porcie {localPort}."
+                        : $"Lokalny proxy relay nie odpowiada na porcie {localPort}.");
+                }
+                catch (Exception ex)
+                {
+                    _lastConnectionTestText = $"Test klienta relay{Environment.NewLine}{ex}";
+                    _lastRelayUpdatedText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    SetStatus($"Błąd testu klienta relay: {ex.Message}");
+                }
+                finally
+                {
+                    SetBusy(false);
+                    RefreshTimerTick(this, EventArgs.Empty);
+                    FocusStatus();
+                }
+
+                return;
+            }
+
             var relayServerUrl = RelayApiClient.NormalizeServerUrl(relayServerTextBox.Text);
             if (string.IsNullOrWhiteSpace(relayServerUrl))
             {
@@ -1610,9 +1801,12 @@ public partial class Form1 : Form
                     $"Serwer: {relayServerTextBox.Text.Trim()}",
                     $"Nazwa: {relayNameTextBox.Text.Trim()}",
                     $"Kod sesji: {relayPairCodeTextBox.Text.Trim()}",
+                    $"Polecenie ADB: {NormalizeRemoteCommand()}",
+                    $"Host tunnel: {(_relayHostTunnel is null ? "nieaktywny" : "aktywny")}",
+                    $"Lokalny proxy klienta: {(_relayClientProxy is null ? "nieaktywny" : $"127.0.0.1:{_relayClientProxy.LocalPort}")}",
                     string.Empty,
                     intentText,
-                    "Ten etap GUI tworzy i claimuje sesję relay. Tunel ADB przez WebSocket będzie dopięty w następnym etapie."
+                    "Host utrzymuje tunel do lokalnego ADB, a klient wystawia lokalny port loopback i moze uruchamiac polecenia ADB przez relay."
                 }));
 
         return string.Join($"{Environment.NewLine}{Environment.NewLine}", sections);
@@ -1637,7 +1831,8 @@ public partial class Form1 : Form
         string relayServerUrl,
         string relayName,
         RelayCreateSessionResponse response,
-        RelaySessionStatusResponse? status)
+        RelaySessionStatusResponse? status,
+        string runtimeStatus)
     {
         var sections = new List<string>
         {
@@ -1658,7 +1853,8 @@ public partial class Form1 : Form
                     $"Host connected: {status?.HostConnected.ToString() ?? "brak danych"}",
                     $"Client connected: {status?.ClientConnected.ToString() ?? "brak danych"}",
                     string.Empty,
-                    "Udostępnij kod sesji drugiej stronie. Ten etap GUI jeszcze nie zestawia tunelu ADB przez WebSocket."
+                    runtimeStatus,
+                    "Udostepnij kod sesji drugiej stronie."
                 })
         };
 
@@ -1669,7 +1865,12 @@ public partial class Form1 : Form
         string relayServerUrl,
         string relayName,
         string pairCode,
-        RelayClaimSessionResponse response)
+        RelayClaimSessionResponse response,
+        int localPort,
+        string adbCommand,
+        string stdout,
+        string stderr,
+        int exitCode)
     {
         var sections = new List<string>
         {
@@ -1686,10 +1887,16 @@ public partial class Form1 : Form
                     $"Wygasa: {response.ExpiresAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
                     $"Grace reconnect: {response.ReconnectGraceSeconds}s",
                     $"Heartbeat: co {response.HeartbeatIntervalSeconds}s",
+                    $"Lokalny port relay: {localPort}",
+                    $"Polecenie ADB: {adbCommand}",
+                    $"Kod zakonczenia ADB: {exitCode}",
                     string.Empty,
-                    "Sesja została zaakceptowana przez broker. Tunel ADB przez relay będzie dopięty w kolejnym etapie GUI."
+                    "Sesja relay zostala polaczona przez lokalny proxy loopback 127.0.0.1."
                 })
         };
+
+        AddSection(sections, "ADB standard output", stdout);
+        AddSection(sections, "ADB standard error", stderr);
 
         return string.Join($"{Environment.NewLine}{Environment.NewLine}", sections);
     }
@@ -1867,6 +2074,8 @@ public partial class Form1 : Form
         public string RouterWireGuardIp { get; set; } = string.Empty;
         public int RouterWireGuardPrefixLength { get; set; } = 24;
     }
+
+    private sealed record CommandExecutionResult(int ExitCode, string Stdout, string Stderr);
 
     private static void SetEnvironmentValue(StringDictionary environmentVariables, string key, string value)
     {

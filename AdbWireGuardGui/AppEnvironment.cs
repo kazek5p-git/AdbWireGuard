@@ -32,6 +32,12 @@ internal static class AppEnvironment
             return appDataPackage;
         }
 
+        var repoPackage = GetRepoBackendSourceRoot();
+        if (!string.IsNullOrWhiteSpace(repoPackage) && Directory.Exists(repoPackage))
+        {
+            return repoPackage;
+        }
+
         return localPackage;
     }
 
@@ -90,6 +96,30 @@ internal static class AppEnvironment
 
             var text = File.ReadAllText(overrideFile).Trim();
             return string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? GetRepoBackendSourceRoot()
+    {
+        try
+        {
+            var current = new DirectoryInfo(AppContext.BaseDirectory);
+            while (current is not null)
+            {
+                var candidate = Path.Combine(current.FullName, "BackendSource", "ADB-WireGuard");
+                if (Directory.Exists(candidate))
+                {
+                    return candidate;
+                }
+
+                current = current.Parent;
+            }
+
+            return null;
         }
         catch
         {

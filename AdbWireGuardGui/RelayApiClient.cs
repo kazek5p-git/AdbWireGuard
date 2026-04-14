@@ -72,6 +72,25 @@ internal sealed class RelayApiClient
             ?? throw new InvalidOperationException("Serwer relay zwrocil pusty status sesji.");
     }
 
+    public async Task<RelaySessionStatusResponse> RecordHeartbeatAsync(
+        string serverUrl,
+        Guid sessionId,
+        string role,
+        string resumeToken,
+        CancellationToken cancellationToken)
+    {
+        using var client = CreateClient(serverUrl);
+        var response = await client.PostAsJsonAsync(
+            $"api/v1/relay/sessions/{sessionId}/heartbeat",
+            new RelayHeartbeatRequest(role, resumeToken),
+            JsonOptions,
+            cancellationToken);
+
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<RelaySessionStatusResponse>(JsonOptions, cancellationToken))
+            ?? throw new InvalidOperationException("Serwer relay zwrocil pusty wynik heartbeat.");
+    }
+
     public async Task CloseSessionAsync(
         string serverUrl,
         Guid sessionId,
@@ -168,6 +187,8 @@ internal sealed record RelayClaimSessionResponse(
     DateTimeOffset ExpiresAtUtc,
     int ReconnectGraceSeconds,
     int HeartbeatIntervalSeconds);
+
+internal sealed record RelayHeartbeatRequest(string Role, string ResumeToken);
 
 internal sealed record RelaySessionStatusResponse(
     Guid SessionId,
