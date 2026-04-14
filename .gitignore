@@ -11,3 +11,4 @@ publish-self-contained-v4/
 AdbWireGuard-session-handoff.txt
 relay-test-stdout.txt
 relay-test-stderr.txt
+AdbWireGuardRelay/TestRelayGuiTransport.ps1

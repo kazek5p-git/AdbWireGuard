@@ -1,0 +1,17 @@
+[Unit]
+Description=AdbWireGuard Broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/adbwireguard-broker/current
+ExecStart=/usr/bin/dotnet /opt/adbwireguard-broker/current/AdbWireGuardRelay.dll
+Restart=always
+RestartSec=2
+User=kazek
+Environment=ASPNETCORE_URLS=http://127.0.0.1:5127
+EnvironmentFile=-/etc/adbwireguard-broker.env
+
+[Install]
+WantedBy=multi-user.target
