@@ -107,13 +107,13 @@ public partial class Form1 : Form
         versionTextBox.Text = _guiVersion.ToString();
         serverHostTextBox.Text = _settings.RemoteServerHost ?? string.Empty;
         adbCommandTextBox.Text = string.IsNullOrWhiteSpace(_settings.RemoteAdbCommand) ? "devices" : _settings.RemoteAdbCommand;
-        relayServerTextBox.Text = _settings.RelayServerUrl ?? string.Empty;
-        relayNameTextBox.Text = string.IsNullOrWhiteSpace(_settings.RelayName) ? Environment.MachineName : _settings.RelayName;
-        relayPairCodeTextBox.Text = _settings.RelayPairCode ?? string.Empty;
+        brokerServerTextBox.Text = _settings.RelayServerUrl ?? string.Empty;
+        codeNameTextBox.Text = string.IsNullOrWhiteSpace(_settings.RelayName) ? Environment.MachineName : _settings.RelayName;
+        pairCodeTextBox.Text = _settings.RelayPairCode ?? string.Empty;
 
         if (string.Equals(_settings.Mode, "relay", StringComparison.OrdinalIgnoreCase))
         {
-            relayModeRadioButton.Checked = true;
+            codeModeRadioButton.Checked = true;
         }
         else if (string.Equals(_settings.Mode, "remote", StringComparison.OrdinalIgnoreCase))
         {
@@ -133,8 +133,8 @@ public partial class Form1 : Form
     }
 
     private bool IsDirectRemoteMode => remoteModeRadioButton.Checked;
-    private bool IsRelayMode => relayModeRadioButton.Checked;
-    private bool IsRelayClientIntent => IsRelayMode && !string.IsNullOrWhiteSpace(relayPairCodeTextBox.Text);
+    private bool IsCodeMode => codeModeRadioButton.Checked;
+    private bool IsCodeClientIntent => IsCodeMode && !string.IsNullOrWhiteSpace(pairCodeTextBox.Text);
 
     private async void Form1_Shown(object? sender, EventArgs e)
     {
@@ -155,7 +155,7 @@ public partial class Form1 : Form
 
     private async void primaryActionButton_Click(object sender, EventArgs e)
     {
-        if (IsRelayMode)
+        if (IsCodeMode)
         {
             await RunRelayActionAsync();
             return;
@@ -175,7 +175,7 @@ public partial class Form1 : Form
 
     private async void stopButton_Click(object sender, EventArgs e)
     {
-        if (IsRelayMode)
+        if (IsCodeMode)
         {
             await CloseRelaySessionAsync();
             return;
@@ -224,7 +224,7 @@ public partial class Form1 : Form
             enableVoiceNotifications: _settings.EnableVoiceNotifications,
             enableSoundNotifications: _settings.EnableSoundNotifications,
             enableRouterAutomation: _settings.EnableRouterAutomation,
-            relayHostToken: _settings.RelayHostToken,
+            pairingToken: _settings.RelayHostToken,
             routerHost: _settings.RouterHost,
             routerPort: _settings.RouterPort,
             routerUser: _settings.RouterUser,
@@ -237,7 +237,7 @@ public partial class Form1 : Form
             _settings.EnableVoiceNotifications = dialog.EnableVoiceNotifications;
             _settings.EnableSoundNotifications = dialog.EnableSoundNotifications;
             _settings.EnableRouterAutomation = dialog.EnableRouterAutomation;
-            _settings.RelayHostToken = dialog.RelayHostToken;
+            _settings.RelayHostToken = dialog.PairingToken;
             _settings.RouterHost = dialog.RouterHost;
             _settings.RouterPort = dialog.RouterPort;
             _settings.RouterUser = dialog.RouterUser;
@@ -337,9 +337,9 @@ public partial class Form1 : Form
         RefreshTimerTick(this, EventArgs.Empty);
     }
 
-    private void relayPairCodeTextBox_TextChanged(object? sender, EventArgs e)
+    private void pairCodeTextBox_TextChanged(object? sender, EventArgs e)
     {
-        if (!IsHandleCreated || !IsRelayMode)
+        if (!IsHandleCreated || !IsCodeMode)
         {
             return;
         }
@@ -356,8 +356,8 @@ public partial class Form1 : Form
 
         primaryActionButton.Enabled = !_isBusy && packageExists;
         stopButton.Enabled = !_isBusy && packageExists && (!IsDirectRemoteMode) &&
-            (!IsRelayMode || _relayOwnedSessionId.HasValue || _relayClientProxy is not null);
-        stopButton.Visible = !IsDirectRemoteMode && (!IsRelayMode || _relayOwnedSessionId.HasValue || _relayClientProxy is not null);
+            (!IsCodeMode || _relayOwnedSessionId.HasValue || _relayClientProxy is not null);
+        stopButton.Visible = !IsDirectRemoteMode && (!IsCodeMode || _relayOwnedSessionId.HasValue || _relayClientProxy is not null);
         refreshButton.Enabled = !_isBusy;
         testConnectionButton.Enabled = !_isBusy;
         updateButton.Enabled = !_isBusy && packageExists;
@@ -371,7 +371,7 @@ public partial class Form1 : Form
         updateButton.Visible = false;
         clearLogsButton.Visible = false;
         remoteSettingsLayoutPanel.Enabled = !_isBusy;
-        relaySettingsLayoutPanel.Enabled = !_isBusy;
+        codeSettingsLayoutPanel.Enabled = !_isBusy;
 
         if (!packageExists)
         {
@@ -393,11 +393,11 @@ public partial class Form1 : Form
             return;
         }
 
-        if (IsRelayMode)
+        if (IsCodeMode)
         {
             if (string.IsNullOrWhiteSpace(_lastStatusText))
             {
-                SetStatus(IsRelayClientIntent ? "Gotowe do dołączenia kodem." : "Gotowe do utworzenia kodu połączenia.");
+                SetStatus(IsCodeClientIntent ? "Gotowe do dołączenia kodem." : "Gotowe do utworzenia kodu połączenia.");
             }
 
             updatedTextBox.Text = _lastRelayUpdatedText;
@@ -419,55 +419,55 @@ public partial class Form1 : Form
     private void RefreshModeUi()
     {
         var isDirectRemoteMode = IsDirectRemoteMode;
-        var isRelayMode = IsRelayMode;
-        var isRelayClientMode = IsRelayClientIntent;
+        var isCodeMode = IsCodeMode;
+        var isCodeClientMode = IsCodeClientIntent;
 
-        modeTextBox.Text = isRelayMode
+        modeTextBox.Text = isCodeMode
             ? "Połączenie kodem"
             : isDirectRemoteMode
                 ? "Klient zdalny"
                 : "Serwer lokalny";
-        modeHintLabel.Text = isRelayMode
-            ? isRelayClientMode
+        modeHintLabel.Text = isCodeMode
+            ? isCodeClientMode
                 ? "Wpisz kod połączenia z drugiego komputera i dołącz do sesji."
                 : "Utwórz kod połączenia na tym komputerze i przekaż go drugiej stronie."
             : isDirectRemoteMode
                 ? "Połącz z komputerem, na którym już działa ADB przez WireGuard."
                 : "Włącz udostępnianie ADB na tym komputerze z telefonem podłączonym po USB.";
-        primaryActionButton.Text = isRelayMode
-            ? isRelayClientMode
+        primaryActionButton.Text = isCodeMode
+            ? isCodeClientMode
                 ? "Dołącz kodem"
                 : "Utwórz kod połączenia"
             : isDirectRemoteMode
                 ? "Połącz z drugim komputerem"
                 : "Uruchom serwer na tym komputerze";
-        testConnectionButton.Text = isRelayMode
+        testConnectionButton.Text = isCodeMode
             ? "Sprawdź serwer pośredni"
             : isDirectRemoteMode
                 ? "Sprawdź połączenie z serwerem"
                 : "Sprawdź serwer na tym komputerze";
-        stopButton.Text = isRelayMode ? "Zamknij połączenie kodem" : "Zatrzymaj";
+        stopButton.Text = isCodeMode ? "Zamknij połączenie kodem" : "Zatrzymaj";
         remoteSettingsLayoutPanel.Visible = isDirectRemoteMode;
-        relaySettingsLayoutPanel.Visible = isRelayMode;
-        relayHostTokenLabel.Visible = false;
-        relayHostTokenTextBox.Visible = false;
-        relayPairCodeLabel.Text = isRelayMode
-            ? isRelayClientMode
+        codeSettingsLayoutPanel.Visible = isCodeMode;
+        pairingTokenLabel.Visible = false;
+        pairingTokenTextBox.Visible = false;
+        pairCodeLabel.Text = isCodeMode
+            ? isCodeClientMode
                 ? "Kod połączenia od drugiej strony"
                 : "Kod połączenia"
             : "Kod połączenia";
-        relayPairCodeTextBox.PlaceholderText = isRelayMode
-            ? isRelayClientMode
+        pairCodeTextBox.PlaceholderText = isCodeMode
+            ? isCodeClientMode
                 ? "Wpisz otrzymany kod połączenia"
                 : "Zostaw puste, aby utworzyć nowy kod"
             : "Wpisz kod, aby dołączyć do połączenia";
-        relayNameLabel.Text = isRelayMode
-            ? isRelayClientMode
+        codeNameLabel.Text = isCodeMode
+            ? isCodeClientMode
                 ? "Nazwa tego klienta"
                 : "Nazwa tego hosta"
             : "Nazwa hosta / klienta";
 
-        _settings.Mode = isRelayMode ? "relay" : isDirectRemoteMode ? "remote" : "local";
+        _settings.Mode = isCodeMode ? "relay" : isDirectRemoteMode ? "remote" : "local";
     }
 
     private async Task RunScriptAsync(string scriptPath, string pendingStatus, string actionName)
@@ -723,23 +723,23 @@ public partial class Form1 : Form
 
     private async Task RunRelayActionAsync()
     {
-        var relayServerUrl = RelayApiClient.NormalizeServerUrl(relayServerTextBox.Text);
+        var relayServerUrl = RelayApiClient.NormalizeServerUrl(brokerServerTextBox.Text);
         if (string.IsNullOrWhiteSpace(relayServerUrl))
         {
             SetStatus("Podaj adres serwera pośredniego.");
-            relayServerTextBox.Focus();
+            brokerServerTextBox.Focus();
             return;
         }
 
-        var pairCode = relayPairCodeTextBox.Text.Trim().ToUpperInvariant();
-        var relayName = relayNameTextBox.Text.Trim();
+        var pairCode = pairCodeTextBox.Text.Trim().ToUpperInvariant();
+        var relayName = codeNameTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(relayName))
         {
             relayName = Environment.MachineName;
-            relayNameTextBox.Text = relayName;
+            codeNameTextBox.Text = relayName;
         }
 
-        relayServerTextBox.Text = relayServerUrl;
+        brokerServerTextBox.Text = relayServerUrl;
 
         _settings.RelayServerUrl = relayServerUrl;
         _settings.RelayName = relayName;
@@ -956,7 +956,7 @@ public partial class Form1 : Form
 
     private async Task RunConnectionTestAsync()
     {
-        if (IsRelayMode)
+        if (IsCodeMode)
         {
             if (_relayClientProxy is not null)
             {
@@ -997,11 +997,11 @@ public partial class Form1 : Form
                 return;
             }
 
-            var relayServerUrl = RelayApiClient.NormalizeServerUrl(relayServerTextBox.Text);
+            var relayServerUrl = RelayApiClient.NormalizeServerUrl(brokerServerTextBox.Text);
             if (string.IsNullOrWhiteSpace(relayServerUrl))
             {
                 SetStatus("Podaj adres serwera pośredniego.");
-                relayServerTextBox.Focus();
+                brokerServerTextBox.Focus();
                 return;
             }
 
@@ -1803,7 +1803,7 @@ public partial class Form1 : Form
             return string.Join($"{Environment.NewLine}{Environment.NewLine}", sections);
         }
 
-        var intentText = IsRelayClientIntent
+        var intentText = IsCodeClientIntent
             ? "Tryb klienta: wpisz kod połączenia i kliknij główny przycisk."
             : "Tryb hosta: zostaw pole kodu puste i kliknij główny przycisk, aby utworzyć kod połączenia.";
 
@@ -1814,9 +1814,9 @@ public partial class Form1 : Form
                 Environment.NewLine,
                 new[]
                 {
-                    $"Serwer: {relayServerTextBox.Text.Trim()}",
-                    $"Nazwa: {relayNameTextBox.Text.Trim()}",
-                    $"Kod połączenia: {relayPairCodeTextBox.Text.Trim()}",
+                    $"Serwer: {brokerServerTextBox.Text.Trim()}",
+                    $"Nazwa: {codeNameTextBox.Text.Trim()}",
+                    $"Kod połączenia: {pairCodeTextBox.Text.Trim()}",
                     $"Polecenie ADB: {NormalizeRemoteCommand()}",
                     $"Kanał hosta: {(_relayHostTunnel is null ? "nieaktywny" : "aktywny")}",
                     $"Lokalny port klienta: {(_relayClientProxy is null ? "nieaktywny" : $"127.0.0.1:{_relayClientProxy.LocalPort}")}",
@@ -2036,12 +2036,12 @@ public partial class Form1 : Form
     {
         try
         {
-            _settings.Mode = IsRelayMode ? "relay" : IsDirectRemoteMode ? "remote" : "local";
+            _settings.Mode = IsCodeMode ? "relay" : IsDirectRemoteMode ? "remote" : "local";
             _settings.RemoteServerHost = serverHostTextBox.Text.Trim();
             _settings.RemoteAdbCommand = NormalizeRemoteCommand();
-            _settings.RelayServerUrl = RelayApiClient.NormalizeServerUrl(relayServerTextBox.Text);
-            _settings.RelayName = relayNameTextBox.Text.Trim();
-            _settings.RelayPairCode = relayPairCodeTextBox.Text.Trim().ToUpperInvariant();
+            _settings.RelayServerUrl = RelayApiClient.NormalizeServerUrl(brokerServerTextBox.Text);
+            _settings.RelayName = codeNameTextBox.Text.Trim();
+            _settings.RelayPairCode = pairCodeTextBox.Text.Trim().ToUpperInvariant();
 
             var json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions
             {

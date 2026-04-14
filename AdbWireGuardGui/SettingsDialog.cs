@@ -8,7 +8,7 @@ internal sealed class SettingsDialog : Form
     private readonly Action _onClearLogs;
     private readonly CheckBox _voiceCheckBox;
     private readonly CheckBox _soundCheckBox;
-    private readonly TextBox _relayHostTokenTextBox;
+    private readonly TextBox _pairingTokenTextBox;
     private readonly CheckBox _routerAutoCheckBox;
     private readonly TextBox _routerHostTextBox;
     private readonly TextBox _routerPortTextBox;
@@ -22,7 +22,7 @@ internal sealed class SettingsDialog : Form
 
     public bool EnableVoiceNotifications => _voiceCheckBox.Checked;
     public bool EnableSoundNotifications => _soundCheckBox.Checked;
-    public string RelayHostToken => _relayHostTokenTextBox.Text.Trim();
+    public string PairingToken => _pairingTokenTextBox.Text.Trim();
     public bool EnableRouterAutomation => _routerAutoCheckBox.Checked;
     public string RouterHost => _routerHostTextBox.Text.Trim();
     public int RouterPort => int.TryParse(_routerPortTextBox.Text.Trim(), out var value) && value > 0 ? value : 22;
@@ -35,7 +35,7 @@ internal sealed class SettingsDialog : Form
         bool enableVoiceNotifications,
         bool enableSoundNotifications,
         bool enableRouterAutomation,
-        string relayHostToken,
+        string pairingToken,
         string routerHost,
         int routerPort,
         string routerUser,
@@ -121,17 +121,17 @@ internal sealed class SettingsDialog : Form
             Text = "Tryb \"Połącz kodem\" używa tego tokenu tylko do tworzenia nowych kodów połączenia na komputerze hosta. Klient wpisuje wyłącznie kod połączenia."
         };
 
-        _relayHostTokenTextBox = new TextBox
+        _pairingTokenTextBox = new TextBox
         {
             Dock = DockStyle.Fill,
-            Text = relayHostToken,
+            Text = pairingToken,
             UseSystemPasswordChar = true
         };
 
         pairingPanel.Controls.Add(pairingHintLabel, 0, 0);
         pairingPanel.SetColumnSpan(pairingHintLabel, 2);
         pairingPanel.Controls.Add(new Label { AutoSize = true, Text = "Token tworzenia kodu", Margin = new Padding(0, 6, 12, 0) }, 0, 1);
-        pairingPanel.Controls.Add(_relayHostTokenTextBox, 1, 1);
+        pairingPanel.Controls.Add(_pairingTokenTextBox, 1, 1);
 
         var routerPanel = new TableLayoutPanel
         {

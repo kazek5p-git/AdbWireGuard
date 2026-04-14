@@ -8,24 +8,24 @@ partial class Form1
     private FlowLayoutPanel modeFlowLayoutPanel;
     private RadioButton localModeRadioButton;
     private RadioButton remoteModeRadioButton;
-    private RadioButton relayModeRadioButton;
+    private RadioButton codeModeRadioButton;
     private Label modeHintLabel;
     private Label packageLabel;
     private TextBox packagePathTextBox;
     private TableLayoutPanel remoteSettingsLayoutPanel;
-    private TableLayoutPanel relaySettingsLayoutPanel;
+    private TableLayoutPanel codeSettingsLayoutPanel;
     private Label serverHostLabel;
     private TextBox serverHostTextBox;
     private Label adbCommandLabel;
     private TextBox adbCommandTextBox;
-    private Label relayServerLabel;
-    private TextBox relayServerTextBox;
-    private Label relayHostTokenLabel;
-    private TextBox relayHostTokenTextBox;
-    private Label relayNameLabel;
-    private TextBox relayNameTextBox;
-    private Label relayPairCodeLabel;
-    private TextBox relayPairCodeTextBox;
+    private Label brokerServerLabel;
+    private TextBox brokerServerTextBox;
+    private Label pairingTokenLabel;
+    private TextBox pairingTokenTextBox;
+    private Label codeNameLabel;
+    private TextBox codeNameTextBox;
+    private Label pairCodeLabel;
+    private TextBox pairCodeTextBox;
     private FlowLayoutPanel actionsPanel;
     private Button primaryActionButton;
     private Button stopButton;
@@ -71,23 +71,23 @@ partial class Form1
         modeFlowLayoutPanel = new FlowLayoutPanel();
         localModeRadioButton = new RadioButton();
         remoteModeRadioButton = new RadioButton();
-        relayModeRadioButton = new RadioButton();
+        codeModeRadioButton = new RadioButton();
         packageLabel = new Label();
         packagePathTextBox = new TextBox();
         remoteSettingsLayoutPanel = new TableLayoutPanel();
-        relaySettingsLayoutPanel = new TableLayoutPanel();
+        codeSettingsLayoutPanel = new TableLayoutPanel();
         serverHostLabel = new Label();
         serverHostTextBox = new TextBox();
         adbCommandLabel = new Label();
         adbCommandTextBox = new TextBox();
-        relayServerLabel = new Label();
-        relayServerTextBox = new TextBox();
-        relayHostTokenLabel = new Label();
-        relayHostTokenTextBox = new TextBox();
-        relayNameLabel = new Label();
-        relayNameTextBox = new TextBox();
-        relayPairCodeLabel = new Label();
-        relayPairCodeTextBox = new TextBox();
+        brokerServerLabel = new Label();
+        brokerServerTextBox = new TextBox();
+        pairingTokenLabel = new Label();
+        pairingTokenTextBox = new TextBox();
+        codeNameLabel = new Label();
+        codeNameTextBox = new TextBox();
+        pairCodeLabel = new Label();
+        pairCodeTextBox = new TextBox();
         actionsPanel = new FlowLayoutPanel();
         primaryActionButton = new Button();
         stopButton = new Button();
@@ -117,7 +117,7 @@ partial class Form1
         modeGroupBox.SuspendLayout();
         modeFlowLayoutPanel.SuspendLayout();
         remoteSettingsLayoutPanel.SuspendLayout();
-        relaySettingsLayoutPanel.SuspendLayout();
+        codeSettingsLayoutPanel.SuspendLayout();
         actionsPanel.SuspendLayout();
         summaryLayoutPanel.SuspendLayout();
         SuspendLayout();
@@ -130,7 +130,7 @@ partial class Form1
         rootLayoutPanel.Controls.Add(packageLabel, 0, 1);
         rootLayoutPanel.Controls.Add(packagePathTextBox, 0, 2);
         rootLayoutPanel.Controls.Add(remoteSettingsLayoutPanel, 0, 3);
-        rootLayoutPanel.Controls.Add(relaySettingsLayoutPanel, 0, 4);
+        rootLayoutPanel.Controls.Add(codeSettingsLayoutPanel, 0, 4);
         rootLayoutPanel.Controls.Add(actionsPanel, 0, 5);
         rootLayoutPanel.Controls.Add(summaryLayoutPanel, 0, 6);
         rootLayoutPanel.Controls.Add(logLabel, 0, 7);
@@ -181,7 +181,7 @@ partial class Form1
         modeFlowLayoutPanel.AutoSize = true;
         modeFlowLayoutPanel.Controls.Add(localModeRadioButton);
         modeFlowLayoutPanel.Controls.Add(remoteModeRadioButton);
-        modeFlowLayoutPanel.Controls.Add(relayModeRadioButton);
+        modeFlowLayoutPanel.Controls.Add(codeModeRadioButton);
         modeFlowLayoutPanel.Dock = DockStyle.Top;
         modeFlowLayoutPanel.Location = new Point(12, 26);
         modeFlowLayoutPanel.Name = "modeFlowLayoutPanel";
@@ -212,16 +212,16 @@ partial class Form1
         remoteModeRadioButton.UseVisualStyleBackColor = true;
         remoteModeRadioButton.CheckedChanged += modeRadioButton_CheckedChanged;
         //
-        // relayModeRadioButton
+        // codeModeRadioButton
         //
-        relayModeRadioButton.AutoSize = true;
-        relayModeRadioButton.Location = new Point(352, 3);
-        relayModeRadioButton.Name = "relayModeRadioButton";
-        relayModeRadioButton.Size = new Size(128, 19);
-        relayModeRadioButton.TabIndex = 2;
-        relayModeRadioButton.Text = "Połącz kodem";
-        relayModeRadioButton.UseVisualStyleBackColor = true;
-        relayModeRadioButton.CheckedChanged += modeRadioButton_CheckedChanged;
+        codeModeRadioButton.AutoSize = true;
+        codeModeRadioButton.Location = new Point(352, 3);
+        codeModeRadioButton.Name = "codeModeRadioButton";
+        codeModeRadioButton.Size = new Size(128, 19);
+        codeModeRadioButton.TabIndex = 2;
+        codeModeRadioButton.Text = "Połącz kodem";
+        codeModeRadioButton.UseVisualStyleBackColor = true;
+        codeModeRadioButton.CheckedChanged += modeRadioButton_CheckedChanged;
         //
         // packageLabel
         //
@@ -296,105 +296,105 @@ partial class Form1
         adbCommandTextBox.Size = new Size(824, 23);
         adbCommandTextBox.TabIndex = 3;
         //
-        // relaySettingsLayoutPanel
+        // codeSettingsLayoutPanel
         //
-        relaySettingsLayoutPanel.ColumnCount = 2;
-        relaySettingsLayoutPanel.ColumnStyles.Add(new ColumnStyle());
-        relaySettingsLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        relaySettingsLayoutPanel.Controls.Add(relayServerLabel, 0, 0);
-        relaySettingsLayoutPanel.Controls.Add(relayServerTextBox, 1, 0);
-        relaySettingsLayoutPanel.Controls.Add(relayHostTokenLabel, 0, 1);
-        relaySettingsLayoutPanel.Controls.Add(relayHostTokenTextBox, 1, 1);
-        relaySettingsLayoutPanel.Controls.Add(relayNameLabel, 0, 2);
-        relaySettingsLayoutPanel.Controls.Add(relayNameTextBox, 1, 2);
-        relaySettingsLayoutPanel.Controls.Add(relayPairCodeLabel, 0, 3);
-        relaySettingsLayoutPanel.Controls.Add(relayPairCodeTextBox, 1, 3);
-        relaySettingsLayoutPanel.Dock = DockStyle.Fill;
-        relaySettingsLayoutPanel.Location = new Point(15, 238);
-        relaySettingsLayoutPanel.Name = "relaySettingsLayoutPanel";
-        relaySettingsLayoutPanel.RowCount = 4;
-        relaySettingsLayoutPanel.RowStyles.Add(new RowStyle());
-        relaySettingsLayoutPanel.RowStyles.Add(new RowStyle());
-        relaySettingsLayoutPanel.RowStyles.Add(new RowStyle());
-        relaySettingsLayoutPanel.RowStyles.Add(new RowStyle());
-        relaySettingsLayoutPanel.Size = new Size(934, 128);
-        relaySettingsLayoutPanel.TabIndex = 4;
+        codeSettingsLayoutPanel.ColumnCount = 2;
+        codeSettingsLayoutPanel.ColumnStyles.Add(new ColumnStyle());
+        codeSettingsLayoutPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        codeSettingsLayoutPanel.Controls.Add(brokerServerLabel, 0, 0);
+        codeSettingsLayoutPanel.Controls.Add(brokerServerTextBox, 1, 0);
+        codeSettingsLayoutPanel.Controls.Add(pairingTokenLabel, 0, 1);
+        codeSettingsLayoutPanel.Controls.Add(pairingTokenTextBox, 1, 1);
+        codeSettingsLayoutPanel.Controls.Add(codeNameLabel, 0, 2);
+        codeSettingsLayoutPanel.Controls.Add(codeNameTextBox, 1, 2);
+        codeSettingsLayoutPanel.Controls.Add(pairCodeLabel, 0, 3);
+        codeSettingsLayoutPanel.Controls.Add(pairCodeTextBox, 1, 3);
+        codeSettingsLayoutPanel.Dock = DockStyle.Fill;
+        codeSettingsLayoutPanel.Location = new Point(15, 238);
+        codeSettingsLayoutPanel.Name = "codeSettingsLayoutPanel";
+        codeSettingsLayoutPanel.RowCount = 4;
+        codeSettingsLayoutPanel.RowStyles.Add(new RowStyle());
+        codeSettingsLayoutPanel.RowStyles.Add(new RowStyle());
+        codeSettingsLayoutPanel.RowStyles.Add(new RowStyle());
+        codeSettingsLayoutPanel.RowStyles.Add(new RowStyle());
+        codeSettingsLayoutPanel.Size = new Size(934, 128);
+        codeSettingsLayoutPanel.TabIndex = 4;
         //
-        // relayServerLabel
+        // brokerServerLabel
         //
-        relayServerLabel.Anchor = AnchorStyles.Left;
-        relayServerLabel.AutoSize = true;
-        relayServerLabel.Location = new Point(3, 6);
-        relayServerLabel.Name = "relayServerLabel";
-        relayServerLabel.Size = new Size(69, 15);
-        relayServerLabel.TabIndex = 0;
-        relayServerLabel.Text = "Adres serwera pośredniego";
+        brokerServerLabel.Anchor = AnchorStyles.Left;
+        brokerServerLabel.AutoSize = true;
+        brokerServerLabel.Location = new Point(3, 6);
+        brokerServerLabel.Name = "brokerServerLabel";
+        brokerServerLabel.Size = new Size(69, 15);
+        brokerServerLabel.TabIndex = 0;
+        brokerServerLabel.Text = "Adres serwera pośredniego";
         //
-        // relayServerTextBox
+        // brokerServerTextBox
         //
-        relayServerTextBox.Dock = DockStyle.Fill;
-        relayServerTextBox.Location = new Point(147, 3);
-        relayServerTextBox.Name = "relayServerTextBox";
-        relayServerTextBox.PlaceholderText = "https://relay.example.com";
-        relayServerTextBox.Size = new Size(784, 23);
-        relayServerTextBox.TabIndex = 1;
+        brokerServerTextBox.Dock = DockStyle.Fill;
+        brokerServerTextBox.Location = new Point(147, 3);
+        brokerServerTextBox.Name = "brokerServerTextBox";
+        brokerServerTextBox.PlaceholderText = "https://relay.example.com";
+        brokerServerTextBox.Size = new Size(784, 23);
+        brokerServerTextBox.TabIndex = 1;
         //
-        // relayHostTokenLabel
+        // pairingTokenLabel
         //
-        relayHostTokenLabel.Anchor = AnchorStyles.Left;
-        relayHostTokenLabel.AutoSize = true;
-        relayHostTokenLabel.Location = new Point(3, 38);
-        relayHostTokenLabel.Name = "relayHostTokenLabel";
-        relayHostTokenLabel.Size = new Size(70, 15);
-        relayHostTokenLabel.TabIndex = 2;
-        relayHostTokenLabel.Text = "Token tworzenia kodu";
+        pairingTokenLabel.Anchor = AnchorStyles.Left;
+        pairingTokenLabel.AutoSize = true;
+        pairingTokenLabel.Location = new Point(3, 38);
+        pairingTokenLabel.Name = "pairingTokenLabel";
+        pairingTokenLabel.Size = new Size(70, 15);
+        pairingTokenLabel.TabIndex = 2;
+        pairingTokenLabel.Text = "Token tworzenia kodu";
         //
-        // relayHostTokenTextBox
+        // pairingTokenTextBox
         //
-        relayHostTokenTextBox.Dock = DockStyle.Fill;
-        relayHostTokenTextBox.Location = new Point(147, 35);
-        relayHostTokenTextBox.Name = "relayHostTokenTextBox";
-        relayHostTokenTextBox.Size = new Size(784, 23);
-        relayHostTokenTextBox.TabIndex = 3;
+        pairingTokenTextBox.Dock = DockStyle.Fill;
+        pairingTokenTextBox.Location = new Point(147, 35);
+        pairingTokenTextBox.Name = "pairingTokenTextBox";
+        pairingTokenTextBox.Size = new Size(784, 23);
+        pairingTokenTextBox.TabIndex = 3;
         //
-        // relayNameLabel
+        // codeNameLabel
         //
-        relayNameLabel.Anchor = AnchorStyles.Left;
-        relayNameLabel.AutoSize = true;
-        relayNameLabel.Location = new Point(3, 70);
-        relayNameLabel.Name = "relayNameLabel";
-        relayNameLabel.Size = new Size(112, 15);
-        relayNameLabel.TabIndex = 4;
-        relayNameLabel.Text = "Nazwa hosta / klienta";
+        codeNameLabel.Anchor = AnchorStyles.Left;
+        codeNameLabel.AutoSize = true;
+        codeNameLabel.Location = new Point(3, 70);
+        codeNameLabel.Name = "codeNameLabel";
+        codeNameLabel.Size = new Size(112, 15);
+        codeNameLabel.TabIndex = 4;
+        codeNameLabel.Text = "Nazwa hosta / klienta";
         //
-        // relayNameTextBox
+        // codeNameTextBox
         //
-        relayNameTextBox.Dock = DockStyle.Fill;
-        relayNameTextBox.Location = new Point(147, 67);
-        relayNameTextBox.Name = "relayNameTextBox";
-        relayNameTextBox.Size = new Size(784, 23);
-        relayNameTextBox.TabIndex = 5;
+        codeNameTextBox.Dock = DockStyle.Fill;
+        codeNameTextBox.Location = new Point(147, 67);
+        codeNameTextBox.Name = "codeNameTextBox";
+        codeNameTextBox.Size = new Size(784, 23);
+        codeNameTextBox.TabIndex = 5;
         //
-        // relayPairCodeLabel
+        // pairCodeLabel
         //
-        relayPairCodeLabel.Anchor = AnchorStyles.Left;
-        relayPairCodeLabel.AutoSize = true;
-        relayPairCodeLabel.Location = new Point(3, 102);
-        relayPairCodeLabel.Name = "relayPairCodeLabel";
-        relayPairCodeLabel.Size = new Size(132, 15);
-        relayPairCodeLabel.TabIndex = 6;
-        relayPairCodeLabel.Text = "Kod połączenia";
+        pairCodeLabel.Anchor = AnchorStyles.Left;
+        pairCodeLabel.AutoSize = true;
+        pairCodeLabel.Location = new Point(3, 102);
+        pairCodeLabel.Name = "pairCodeLabel";
+        pairCodeLabel.Size = new Size(132, 15);
+        pairCodeLabel.TabIndex = 6;
+        pairCodeLabel.Text = "Kod połączenia";
         //
-        // relayPairCodeTextBox
+        // pairCodeTextBox
         //
-        relayPairCodeTextBox.CharacterCasing = CharacterCasing.Upper;
-        relayPairCodeTextBox.Dock = DockStyle.Fill;
-        relayPairCodeTextBox.Location = new Point(147, 99);
-        relayPairCodeTextBox.Name = "relayPairCodeTextBox";
-        relayPairCodeTextBox.PlaceholderText = "Wpisz kod, aby dołączyć do połączenia";
-        relayPairCodeTextBox.Size = new Size(784, 23);
-        relayPairCodeTextBox.TabIndex = 7;
-        relayPairCodeTextBox.TextChanged += relayPairCodeTextBox_TextChanged;
+        pairCodeTextBox.CharacterCasing = CharacterCasing.Upper;
+        pairCodeTextBox.Dock = DockStyle.Fill;
+        pairCodeTextBox.Location = new Point(147, 99);
+        pairCodeTextBox.Name = "pairCodeTextBox";
+        pairCodeTextBox.PlaceholderText = "Wpisz kod, aby dołączyć do połączenia";
+        pairCodeTextBox.Size = new Size(784, 23);
+        pairCodeTextBox.TabIndex = 7;
+        pairCodeTextBox.TextChanged += pairCodeTextBox_TextChanged;
         //
         // actionsPanel
         //
@@ -719,8 +719,8 @@ partial class Form1
         modeFlowLayoutPanel.PerformLayout();
         remoteSettingsLayoutPanel.ResumeLayout(false);
         remoteSettingsLayoutPanel.PerformLayout();
-        relaySettingsLayoutPanel.ResumeLayout(false);
-        relaySettingsLayoutPanel.PerformLayout();
+        codeSettingsLayoutPanel.ResumeLayout(false);
+        codeSettingsLayoutPanel.PerformLayout();
         actionsPanel.ResumeLayout(false);
         actionsPanel.PerformLayout();
         summaryLayoutPanel.ResumeLayout(false);
