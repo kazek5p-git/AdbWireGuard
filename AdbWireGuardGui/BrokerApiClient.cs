@@ -3,20 +3,20 @@ using System.Text.Json;
 
 namespace AdbWireGuardGui;
 
-internal sealed class RelayApiClient
+internal sealed class BrokerApiClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<RelayHealthResponse> GetHealthAsync(string serverUrl, CancellationToken cancellationToken)
+    public async Task<BrokerHealthResponse> GetHealthAsync(string serverUrl, CancellationToken cancellationToken)
     {
         using var client = CreateClient(serverUrl);
         var response = await client.GetAsync("healthz", cancellationToken);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<RelayHealthResponse>(JsonOptions, cancellationToken))
-            ?? throw new InvalidOperationException("Serwer relay zwrocil pusty health check.");
+        return (await response.Content.ReadFromJsonAsync<BrokerHealthResponse>(JsonOptions, cancellationToken))
+            ?? throw new InvalidOperationException("Serwer pośredni zwrócił pusty health check.");
     }
 
-    public async Task<RelayCreateSessionResponse> CreateSessionAsync(
+    public async Task<BrokerCreateSessionResponse> CreateSessionAsync(
         string serverUrl,
         string hostToken,
         string deviceName,
@@ -29,16 +29,16 @@ internal sealed class RelayApiClient
 
         var response = await client.PostAsJsonAsync(
             "api/v1/relay/sessions",
-            new RelayCreateSessionRequest(deviceName, requestedTtlMinutes),
+            new BrokerCreateSessionRequest(deviceName, requestedTtlMinutes),
             JsonOptions,
             cancellationToken);
 
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
-        return (await response.Content.ReadFromJsonAsync<RelayCreateSessionResponse>(JsonOptions, cancellationToken))
-            ?? throw new InvalidOperationException("Serwer relay zwrocil pusty wynik tworzenia sesji.");
+        return (await response.Content.ReadFromJsonAsync<BrokerCreateSessionResponse>(JsonOptions, cancellationToken))
+            ?? throw new InvalidOperationException("Serwer pośredni zwrócił pusty wynik tworzenia sesji.");
     }
 
-    public async Task<RelayClaimSessionResponse> ClaimSessionAsync(
+    public async Task<BrokerClaimSessionResponse> ClaimSessionAsync(
         string serverUrl,
         string pairCode,
         string clientName,
@@ -47,16 +47,16 @@ internal sealed class RelayApiClient
         using var client = CreateClient(serverUrl);
         var response = await client.PostAsJsonAsync(
             "api/v1/relay/claim",
-            new RelayClaimSessionRequest(pairCode, clientName),
+            new BrokerClaimSessionRequest(pairCode, clientName),
             JsonOptions,
             cancellationToken);
 
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
-        return (await response.Content.ReadFromJsonAsync<RelayClaimSessionResponse>(JsonOptions, cancellationToken))
-            ?? throw new InvalidOperationException("Serwer relay zwrocil pusty wynik claim sesji.");
+        return (await response.Content.ReadFromJsonAsync<BrokerClaimSessionResponse>(JsonOptions, cancellationToken))
+            ?? throw new InvalidOperationException("Serwer pośredni zwrócił pusty wynik dołączenia do sesji.");
     }
 
-    public async Task<RelaySessionStatusResponse> GetSessionStatusAsync(
+    public async Task<BrokerSessionStatusResponse> GetSessionStatusAsync(
         string serverUrl,
         Guid sessionId,
         string hostToken,
@@ -68,11 +68,11 @@ internal sealed class RelayApiClient
 
         var response = await client.GetAsync($"api/v1/relay/sessions/{sessionId}", cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
-        return (await response.Content.ReadFromJsonAsync<RelaySessionStatusResponse>(JsonOptions, cancellationToken))
-            ?? throw new InvalidOperationException("Serwer relay zwrocil pusty status sesji.");
+        return (await response.Content.ReadFromJsonAsync<BrokerSessionStatusResponse>(JsonOptions, cancellationToken))
+            ?? throw new InvalidOperationException("Serwer pośredni zwrócił pusty status sesji.");
     }
 
-    public async Task<RelaySessionStatusResponse> RecordHeartbeatAsync(
+    public async Task<BrokerSessionStatusResponse> RecordHeartbeatAsync(
         string serverUrl,
         Guid sessionId,
         string role,
@@ -82,13 +82,13 @@ internal sealed class RelayApiClient
         using var client = CreateClient(serverUrl);
         var response = await client.PostAsJsonAsync(
             $"api/v1/relay/sessions/{sessionId}/heartbeat",
-            new RelayHeartbeatRequest(role, resumeToken),
+            new BrokerHeartbeatRequest(role, resumeToken),
             JsonOptions,
             cancellationToken);
 
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
-        return (await response.Content.ReadFromJsonAsync<RelaySessionStatusResponse>(JsonOptions, cancellationToken))
-            ?? throw new InvalidOperationException("Serwer relay zwrocil pusty wynik heartbeat.");
+        return (await response.Content.ReadFromJsonAsync<BrokerSessionStatusResponse>(JsonOptions, cancellationToken))
+            ?? throw new InvalidOperationException("Serwer pośredni zwrócił pusty wynik heartbeat.");
     }
 
     public async Task CloseSessionAsync(
@@ -142,7 +142,7 @@ internal sealed class RelayApiClient
         string? message = null;
         try
         {
-            var error = await response.Content.ReadFromJsonAsync<RelayErrorResponse>(JsonOptions, cancellationToken);
+            var error = await response.Content.ReadFromJsonAsync<BrokerErrorResponse>(JsonOptions, cancellationToken);
             message = error?.Error;
         }
         catch
@@ -164,11 +164,11 @@ internal sealed class RelayApiClient
     }
 }
 
-internal sealed record RelayHealthResponse(bool Ok, string Service, int HostTokensConfigured);
+internal sealed record BrokerHealthResponse(bool Ok, string Service, int HostTokensConfigured);
 
-internal sealed record RelayCreateSessionRequest(string DeviceName, int RequestedTtlMinutes);
+internal sealed record BrokerCreateSessionRequest(string DeviceName, int RequestedTtlMinutes);
 
-internal sealed record RelayCreateSessionResponse(
+internal sealed record BrokerCreateSessionResponse(
     Guid SessionId,
     string PairCode,
     string HostConnectToken,
@@ -178,9 +178,9 @@ internal sealed record RelayCreateSessionResponse(
     int ReconnectGraceSeconds,
     int HeartbeatIntervalSeconds);
 
-internal sealed record RelayClaimSessionRequest(string PairCode, string ClientName);
+internal sealed record BrokerClaimSessionRequest(string PairCode, string ClientName);
 
-internal sealed record RelayClaimSessionResponse(
+internal sealed record BrokerClaimSessionResponse(
     Guid SessionId,
     string ClientConnectToken,
     string ClientResumeToken,
@@ -188,20 +188,20 @@ internal sealed record RelayClaimSessionResponse(
     int ReconnectGraceSeconds,
     int HeartbeatIntervalSeconds);
 
-internal sealed record RelayHeartbeatRequest(string Role, string ResumeToken);
+internal sealed record BrokerHeartbeatRequest(string Role, string ResumeToken);
 
-internal sealed record RelaySessionStatusResponse(
+internal sealed record BrokerSessionStatusResponse(
     Guid SessionId,
     string DeviceName,
     string Status,
     DateTimeOffset ExpiresAtUtc,
     bool HostConnected,
     bool ClientConnected,
-    bool RelayStarted,
+    bool BridgeStarted,
     int ClaimAttempts,
     DateTimeOffset? HostLastSeenUtc,
     DateTimeOffset? ClientLastSeenUtc,
     DateTimeOffset? HostReconnectDeadlineUtc,
     DateTimeOffset? ClientReconnectDeadlineUtc);
 
-internal sealed record RelayErrorResponse(string Error);
+internal sealed record BrokerErrorResponse(string Error);

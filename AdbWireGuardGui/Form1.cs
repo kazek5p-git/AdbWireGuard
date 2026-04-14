@@ -70,7 +70,7 @@ public partial class Form1 : Form
     };
 
     private readonly GitHubUpdateService _updateService = new();
-    private readonly RelayApiClient _relayApiClient = new();
+    private readonly BrokerApiClient _relayApiClient = new();
     private readonly Version _guiVersion;
     private GuiSettings _settings;
     private bool _isBusy;
@@ -91,8 +91,8 @@ public partial class Form1 : Form
     private string _relayLastName = string.Empty;
     private string _relayLastSessionStatus = string.Empty;
     private string _relayLastExpiresAtText = string.Empty;
-    private RelayHostTunnel? _relayHostTunnel;
-    private RelayClientProxy? _relayClientProxy;
+    private BrokerHostTunnel? _relayHostTunnel;
+    private BrokerClientProxy? _relayClientProxy;
 
     public Form1()
     {
@@ -723,7 +723,7 @@ public partial class Form1 : Form
 
     private async Task RunRelayActionAsync()
     {
-        var relayServerUrl = RelayApiClient.NormalizeServerUrl(brokerServerTextBox.Text);
+        var relayServerUrl = BrokerApiClient.NormalizeServerUrl(brokerServerTextBox.Text);
         if (string.IsNullOrWhiteSpace(relayServerUrl))
         {
             SetStatus("Podaj adres serwera pośredniego.");
@@ -783,7 +783,7 @@ public partial class Form1 : Form
                     DefaultRelaySessionTtlMinutes,
                     CancellationToken.None);
 
-                RelaySessionStatusResponse? status = null;
+                BrokerSessionStatusResponse? status = null;
                 try
                 {
                     status = await _relayApiClient.GetSessionStatusAsync(
@@ -798,7 +798,7 @@ public partial class Form1 : Form
                 }
 
                 await DisposeRelayTransportAsync();
-                _relayHostTunnel = new RelayHostTunnel(
+                _relayHostTunnel = new BrokerHostTunnel(
                     _relayApiClient,
                     relayServerUrl,
                     response.SessionId,
@@ -838,7 +838,7 @@ public partial class Form1 : Form
 
                 await DisposeRelayTransportAsync();
                 var adbCommand = NormalizeRemoteCommand();
-                _relayClientProxy = new RelayClientProxy(
+                _relayClientProxy = new BrokerClientProxy(
                     _relayApiClient,
                     relayServerUrl,
                     response.SessionId,
@@ -997,7 +997,7 @@ public partial class Form1 : Form
                 return;
             }
 
-            var relayServerUrl = RelayApiClient.NormalizeServerUrl(brokerServerTextBox.Text);
+            var relayServerUrl = BrokerApiClient.NormalizeServerUrl(brokerServerTextBox.Text);
             if (string.IsNullOrWhiteSpace(relayServerUrl))
             {
                 SetStatus("Podaj adres serwera pośredniego.");
@@ -1846,8 +1846,8 @@ public partial class Form1 : Form
     private static string BuildRelayHostResultText(
         string relayServerUrl,
         string relayName,
-        RelayCreateSessionResponse response,
-        RelaySessionStatusResponse? status,
+        BrokerCreateSessionResponse response,
+        BrokerSessionStatusResponse? status,
         string runtimeStatus)
     {
         var sections = new List<string>
@@ -1881,7 +1881,7 @@ public partial class Form1 : Form
         string relayServerUrl,
         string relayName,
         string pairCode,
-        RelayClaimSessionResponse response,
+        BrokerClaimSessionResponse response,
         int localPort,
         string adbCommand,
         string stdout,
@@ -2039,7 +2039,7 @@ public partial class Form1 : Form
             _settings.Mode = IsCodeMode ? "relay" : IsDirectRemoteMode ? "remote" : "local";
             _settings.RemoteServerHost = serverHostTextBox.Text.Trim();
             _settings.RemoteAdbCommand = NormalizeRemoteCommand();
-            _settings.RelayServerUrl = RelayApiClient.NormalizeServerUrl(brokerServerTextBox.Text);
+            _settings.RelayServerUrl = BrokerApiClient.NormalizeServerUrl(brokerServerTextBox.Text);
             _settings.RelayName = codeNameTextBox.Text.Trim();
             _settings.RelayPairCode = pairCodeTextBox.Text.Trim().ToUpperInvariant();
 
@@ -2107,7 +2107,7 @@ public partial class Form1 : Form
     {
         settings.RemoteServerHost ??= string.Empty;
         settings.RemoteAdbCommand = string.IsNullOrWhiteSpace(settings.RemoteAdbCommand) ? "devices" : settings.RemoteAdbCommand.Trim();
-        settings.RelayServerUrl = RelayApiClient.NormalizeServerUrl(settings.RelayServerUrl ?? string.Empty);
+        settings.RelayServerUrl = BrokerApiClient.NormalizeServerUrl(settings.RelayServerUrl ?? string.Empty);
         settings.RelayHostToken ??= string.Empty;
         settings.RelayName = string.IsNullOrWhiteSpace(settings.RelayName) ? Environment.MachineName : settings.RelayName.Trim();
         settings.RelayPairCode = (settings.RelayPairCode ?? string.Empty).Trim().ToUpperInvariant();

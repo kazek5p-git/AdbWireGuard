@@ -4,11 +4,11 @@ using System.Net.WebSockets;
 
 namespace AdbWireGuardGui;
 
-internal static class RelayTransportHelpers
+internal static class BrokerTransportHelpers
 {
     public static Uri BuildWebSocketUri(string serverUrl, string pathAndQuery)
     {
-        var baseUri = new Uri(RelayApiClient.NormalizeServerUrl(serverUrl), UriKind.Absolute);
+        var baseUri = new Uri(BrokerApiClient.NormalizeServerUrl(serverUrl), UriKind.Absolute);
         var builder = new UriBuilder(baseUri);
         builder.Scheme = builder.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws";
         builder.Path = pathAndQuery.TrimStart('/');

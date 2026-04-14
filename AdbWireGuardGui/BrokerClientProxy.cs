@@ -1,11 +1,12 @@
+using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 
 namespace AdbWireGuardGui;
 
-internal sealed class RelayHostTunnel : IAsyncDisposable
+internal sealed class BrokerClientProxy : IAsyncDisposable
 {
-    private readonly RelayApiClient _apiClient;
+    private readonly BrokerApiClient _apiClient;
     private readonly string _serverUrl;
     private readonly Guid _sessionId;
     private readonly string _connectToken;
@@ -13,12 +14,13 @@ internal sealed class RelayHostTunnel : IAsyncDisposable
     private readonly int _heartbeatIntervalSeconds;
     private readonly Action<string> _log;
     private readonly CancellationTokenSource _cts = new();
-    private Task? _runTask;
+    private readonly TcpListener _listener;
+    private Task? _acceptLoopTask;
     private Task? _heartbeatTask;
     private volatile bool _hasConnected;
 
-    public RelayHostTunnel(
-        RelayApiClient apiClient,
+    public BrokerClientProxy(
+        BrokerApiClient apiClient,
         string serverUrl,
         Guid sessionId,
         string connectToken,
@@ -33,35 +35,43 @@ internal sealed class RelayHostTunnel : IAsyncDisposable
         _resumeToken = resumeToken;
         _heartbeatIntervalSeconds = Math.Max(heartbeatIntervalSeconds, 10);
         _log = log;
+        LocalPort = BrokerTransportHelpers.GetAvailableLoopbackPort();
+        _listener = new TcpListener(IPAddress.Loopback, LocalPort);
     }
+
+    public int LocalPort { get; }
 
     public void Start()
     {
+        _listener.Start();
         _heartbeatTask ??= Task.Run(() => RunHeartbeatLoopAsync(_cts.Token));
-        _runTask ??= Task.Run(() => RunAsync(_cts.Token));
+        _acceptLoopTask ??= Task.Run(() => AcceptLoopAsync(_cts.Token));
     }
 
-    private async Task RunAsync(CancellationToken cancellationToken)
+    private async Task AcceptLoopAsync(CancellationToken cancellationToken)
     {
+        _log($"Klient połączenia kodem: lokalny port loopback {LocalPort} jest gotowy.");
+
         while (!cancellationToken.IsCancellationRequested)
         {
+            TcpClient? localClient = null;
             try
             {
-                using var tcpClient = new TcpClient();
-                await tcpClient.ConnectAsync("127.0.0.1", 5037, cancellationToken);
+                localClient = await _listener.AcceptTcpClientAsync(cancellationToken);
+                _log("Klient połączenia kodem: przyjęto lokalne połączenie ADB.");
 
                 using var socket = new ClientWebSocket();
                 socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(Math.Max(10, _heartbeatIntervalSeconds));
 
                 var token = _hasConnected ? _resumeToken : _connectToken;
-                var uri = RelayTransportHelpers.BuildWebSocketUri(_serverUrl, $"ws/host/{_sessionId}?token={Uri.EscapeDataString(token)}");
+                var uri = BrokerTransportHelpers.BuildWebSocketUri(_serverUrl, $"ws/client/{_sessionId}?token={Uri.EscapeDataString(token)}");
                 await socket.ConnectAsync(uri, cancellationToken);
 
                 _hasConnected = true;
-                _log("Relay host: połączono z serwerem i lokalnym ADB.");
-                await RelayTransportHelpers.BridgeTcpAndWebSocketAsync(tcpClient, socket, cancellationToken);
+                _log("Klient połączenia kodem: połączono z serwerem pośrednim.");
+                await BrokerTransportHelpers.BridgeTcpAndWebSocketAsync(localClient, socket, cancellationToken);
 
-                _log("Relay host: połączenie zostało rozłączone, trwa ponowienie.");
+                _log("Klient połączenia kodem: połączenie ADB zostało zamknięte.");
             }
             catch (OperationCanceledException)
             {
@@ -69,16 +79,15 @@ internal sealed class RelayHostTunnel : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                _log($"Relay host: błąd połączenia: {ex.Message}");
-            }
-
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
+                _log($"Klient połączenia kodem: błąd połączenia: {ex.Message}");
+                try
+                {
+                    localClient?.Dispose();
+                }
+                catch
+                {
+                    // ignore cleanup errors
+                }
             }
         }
     }
@@ -90,7 +99,7 @@ internal sealed class RelayHostTunnel : IAsyncDisposable
             try
             {
                 await Task.Delay(TimeSpan.FromSeconds(_heartbeatIntervalSeconds), cancellationToken);
-                await _apiClient.RecordHeartbeatAsync(_serverUrl, _sessionId, "host", _resumeToken, cancellationToken);
+                await _apiClient.RecordHeartbeatAsync(_serverUrl, _sessionId, "client", _resumeToken, cancellationToken);
             }
             catch (OperationCanceledException)
             {
@@ -98,7 +107,7 @@ internal sealed class RelayHostTunnel : IAsyncDisposable
             }
             catch (Exception ex)
             {
-                _log($"Relay host: heartbeat nie powiodl sie: {ex.Message}");
+                _log($"Klient połączenia kodem: heartbeat nie powiódł się: {ex.Message}");
             }
         }
     }
@@ -106,11 +115,20 @@ internal sealed class RelayHostTunnel : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         _cts.Cancel();
-        if (_runTask is not null)
+        try
+        {
+            _listener.Stop();
+        }
+        catch
+        {
+            // ignore cleanup errors
+        }
+
+        if (_acceptLoopTask is not null)
         {
             try
             {
-                await _runTask;
+                await _acceptLoopTask;
             }
             catch (OperationCanceledException)
             {
