@@ -40,7 +40,7 @@ public sealed record SessionStatusResponse(
 
 public sealed record ErrorResponse(string Error);
 
-internal enum RelaySessionStatus
+internal enum SessionLifecycleStatus
 {
     PendingHost,
     WaitingForClient,

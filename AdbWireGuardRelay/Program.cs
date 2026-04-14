@@ -4,10 +4,10 @@ using AdbWireGuardRelay;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var relayOptions = RelayOptions.FromConfiguration(builder.Configuration);
-builder.Services.AddSingleton(relayOptions);
-builder.Services.AddSingleton<RelaySessionStore>();
-builder.Services.AddHostedService<RelayCleanupService>();
+var brokerOptions = BrokerOptions.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(brokerOptions);
+builder.Services.AddSingleton<SessionBroker>();
+builder.Services.AddHostedService<SessionCleanupService>();
 
 var app = builder.Build();
 
@@ -20,13 +20,13 @@ app.MapGet("/healthz", () => Results.Ok(new
 {
     ok = true,
     service = "adb-wireguard-relay",
-    hostTokensConfigured = relayOptions.HostTokens.Count
+    hostTokensConfigured = brokerOptions.HostTokens.Count
 }));
 
-app.MapPost("/api/v1/relay/sessions", (HttpContext context, CreateSessionRequest request, RelaySessionStore store) =>
+app.MapPost("/api/v1/relay/sessions", (HttpContext context, CreateSessionRequest request, SessionBroker store) =>
 {
     var hostToken = ReadBearerToken(context);
-    var validationError = ValidateHostToken(hostToken, relayOptions);
+    var validationError = ValidateHostToken(hostToken, brokerOptions);
     if (validationError is not null)
     {
         return validationError;
@@ -43,7 +43,7 @@ app.MapPost("/api/v1/relay/sessions", (HttpContext context, CreateSessionRequest
     }
 });
 
-app.MapPost("/api/v1/relay/claim", (ClaimSessionRequest request, RelaySessionStore store) =>
+app.MapPost("/api/v1/relay/claim", (ClaimSessionRequest request, SessionBroker store) =>
 {
     try
     {
@@ -56,7 +56,7 @@ app.MapPost("/api/v1/relay/claim", (ClaimSessionRequest request, RelaySessionSto
     }
 });
 
-app.MapPost("/api/v1/relay/sessions/{sessionId:guid}/heartbeat", (Guid sessionId, HeartbeatRequest request, RelaySessionStore store) =>
+app.MapPost("/api/v1/relay/sessions/{sessionId:guid}/heartbeat", (Guid sessionId, HeartbeatRequest request, SessionBroker store) =>
 {
     try
     {
@@ -76,10 +76,10 @@ app.MapPost("/api/v1/relay/sessions/{sessionId:guid}/heartbeat", (Guid sessionId
     }
 });
 
-app.MapGet("/api/v1/relay/sessions/{sessionId:guid}", (Guid sessionId, HttpContext context, RelaySessionStore store) =>
+app.MapGet("/api/v1/relay/sessions/{sessionId:guid}", (Guid sessionId, HttpContext context, SessionBroker store) =>
 {
     var hostToken = ReadBearerToken(context);
-    var validationError = ValidateHostToken(hostToken, relayOptions);
+    var validationError = ValidateHostToken(hostToken, brokerOptions);
     if (validationError is not null)
     {
         return validationError;
@@ -99,10 +99,10 @@ app.MapGet("/api/v1/relay/sessions/{sessionId:guid}", (Guid sessionId, HttpConte
     }
 });
 
-app.MapDelete("/api/v1/relay/sessions/{sessionId:guid}", (Guid sessionId, HttpContext context, RelaySessionStore store) =>
+app.MapDelete("/api/v1/relay/sessions/{sessionId:guid}", (Guid sessionId, HttpContext context, SessionBroker store) =>
 {
     var hostToken = ReadBearerToken(context);
-    var validationError = ValidateHostToken(hostToken, relayOptions);
+    var validationError = ValidateHostToken(hostToken, brokerOptions);
     if (validationError is not null)
     {
         return validationError;
@@ -123,7 +123,7 @@ app.MapDelete("/api/v1/relay/sessions/{sessionId:guid}", (Guid sessionId, HttpCo
     }
 });
 
-app.Map("/ws/host/{sessionId:guid}", async (HttpContext context, Guid sessionId, RelaySessionStore store) =>
+app.Map("/ws/host/{sessionId:guid}", async (HttpContext context, Guid sessionId, SessionBroker store) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)
     {
@@ -162,7 +162,7 @@ app.Map("/ws/host/{sessionId:guid}", async (HttpContext context, Guid sessionId,
     }
 });
 
-app.Map("/ws/client/{sessionId:guid}", async (HttpContext context, Guid sessionId, RelaySessionStore store) =>
+app.Map("/ws/client/{sessionId:guid}", async (HttpContext context, Guid sessionId, SessionBroker store) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)
     {
@@ -212,7 +212,7 @@ static string? ReadBearerToken(HttpContext context)
         : null;
 }
 
-static IResult? ValidateHostToken(string? hostToken, RelayOptions options)
+static IResult? ValidateHostToken(string? hostToken, BrokerOptions options)
 {
     if (string.IsNullOrWhiteSpace(hostToken))
     {
@@ -223,7 +223,7 @@ static IResult? ValidateHostToken(string? hostToken, RelayOptions options)
     {
         return Results.Problem(
             title: "Relay host tokens are not configured",
-            detail: "Ustaw co najmniej jeden token hosta w Relay:HostTokens albo w ADBWG_RELAY_HOST_TOKENS.",
+            detail: "Ustaw co najmniej jeden token hosta w Broker:HostTokens albo w ADBWG_BROKER_HOST_TOKENS. Stary klucz Relay:HostTokens i ADBWG_RELAY_HOST_TOKENS nadal są obsługiwane.",
             statusCode: StatusCodes.Status500InternalServerError);
     }
 

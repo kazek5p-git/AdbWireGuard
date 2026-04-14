@@ -4,7 +4,7 @@ Minimalny broker sesji dla `ADB over WireGuard`.
 
 ## Co robi
 
-- tworzy krótkotrwałe sesje relay
+- tworzy krótkotrwałe sesje pośrednie
 - generuje jednorazowy kod parowania
 - wydaje token wznowienia dla hosta i klienta
 - trzyma krótki grace period na reconnect
@@ -22,14 +22,18 @@ Minimalny broker sesji dla `ADB over WireGuard`.
 Ustaw co najmniej jeden token hosta:
 
 ```powershell
-$env:ADBWG_RELAY_HOST_TOKENS="twoj-sekretny-token"
+$env:ADBWG_BROKER_HOST_TOKENS="twoj-sekretny-token"
 ```
 
 Możesz też użyć kilku tokenów:
 
 ```powershell
-$env:ADBWG_RELAY_HOST_TOKENS="token-1;token-2"
+$env:ADBWG_BROKER_HOST_TOKENS="token-1;token-2"
 ```
+
+Serwer nadal obsługuje też stare nazwy:
+- sekcja `Relay` w `appsettings.json`
+- zmienna `ADBWG_RELAY_HOST_TOKENS`
 
 ## Uruchomienie
 
@@ -47,6 +51,8 @@ GET /healthz
 
 ### Utworzenie sesji przez hosta
 
+Zgodnościowo endpoint nadal używa ścieżki `/relay/...`.
+
 ```text
 POST /api/v1/relay/sessions
 Authorization: Bearer <host-token>
@@ -61,7 +67,7 @@ Body:
 }
 ```
 
-### Claim przez klienta
+### Dołączenie przez klienta
 
 ```text
 POST /api/v1/relay/claim
@@ -103,8 +109,8 @@ Body:
 }
 ```
 
-## Następny etap
+## Stan
 
-- dopiąć w GUI prawdziwy tunel ADB po WebSocket
-- dodać automatyczny reconnect host/client z użyciem resume token
-- dodać bezpieczne wdrożenie za reverse proxy na `kazpar`
+- GUI ma już transport ADB po WebSocket
+- serwer ma heartbeat, reconnect grace i resume token
+- następny etap to stabilizacja wdrożenia za reverse proxy na `kazpar`

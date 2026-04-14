@@ -5,13 +5,13 @@ using System.Text;
 
 namespace AdbWireGuardRelay;
 
-public sealed class RelaySessionStore
+public sealed class SessionBroker
 {
-    private readonly RelayOptions _options;
-    private readonly ILogger<RelaySessionStore> _logger;
-    private readonly ConcurrentDictionary<Guid, RelaySession> _sessions = new();
+    private readonly BrokerOptions _options;
+    private readonly ILogger<SessionBroker> _logger;
+    private readonly ConcurrentDictionary<Guid, BrokerSession> _sessions = new();
 
-    public RelaySessionStore(RelayOptions options, ILogger<RelaySessionStore> logger)
+    public SessionBroker(BrokerOptions options, ILogger<SessionBroker> logger)
     {
         _options = options;
         _logger = logger;
@@ -21,7 +21,7 @@ public sealed class RelaySessionStore
     {
         var activeSessionsForHost = _sessions.Values.Count(session =>
             session.HostToken == hostToken &&
-            session.Status is RelaySessionStatus.PendingHost or RelaySessionStatus.WaitingForClient or RelaySessionStatus.Active &&
+            session.Status is SessionLifecycleStatus.PendingHost or SessionLifecycleStatus.WaitingForClient or SessionLifecycleStatus.Active &&
             session.ExpiresAtUtc > DateTimeOffset.UtcNow);
 
         if (activeSessionsForHost >= _options.MaxSessionsPerHost)
@@ -33,7 +33,7 @@ public sealed class RelaySessionStore
         ttlMinutes = Math.Clamp(ttlMinutes, 1, _options.MaxSessionTtlMinutes);
         var expiresAt = DateTimeOffset.UtcNow.AddMinutes(ttlMinutes);
 
-        var session = new RelaySession(
+        var session = new BrokerSession(
             Id: Guid.NewGuid(),
             HostToken: hostToken,
             DeviceName: string.IsNullOrWhiteSpace(deviceName) ? "Android host" : deviceName.Trim(),
@@ -44,10 +44,10 @@ public sealed class RelaySessionStore
 
         if (!_sessions.TryAdd(session.Id, session))
         {
-            throw new InvalidOperationException("Nie udalo sie utworzyc sesji relay.");
+            throw new InvalidOperationException("Nie udało się utworzyć sesji pośredniej.");
         }
 
-        _logger.LogInformation("Created relay session {SessionId} for {DeviceName}", session.Id, session.DeviceName);
+        _logger.LogInformation("Created broker session {SessionId} for {DeviceName}", session.Id, session.DeviceName);
 
         return new CreateSessionResponse(
             session.Id,
@@ -63,7 +63,7 @@ public sealed class RelaySessionStore
     public ClaimSessionResponse ClaimSession(string pairCode, string? clientName)
     {
         var session = _sessions.Values.FirstOrDefault(candidate =>
-            candidate.Status is RelaySessionStatus.PendingHost or RelaySessionStatus.WaitingForClient &&
+            candidate.Status is SessionLifecycleStatus.PendingHost or SessionLifecycleStatus.WaitingForClient &&
             candidate.ExpiresAtUtc > DateTimeOffset.UtcNow &&
             string.Equals(candidate.PairCode, NormalizePairCode(pairCode), StringComparison.Ordinal));
 
@@ -79,8 +79,8 @@ public sealed class RelaySessionStore
             session.ClaimAttempts++;
             if (session.ClaimAttempts > _options.MaxPendingClaimAttempts)
             {
-                session.Status = RelaySessionStatus.Expired;
-                throw new InvalidOperationException("Sesja relay zostala zablokowana po zbyt wielu probach polaczenia.");
+                session.Status = SessionLifecycleStatus.Expired;
+                throw new InvalidOperationException("Sesja pośrednia została zablokowana po zbyt wielu próbach połączenia.");
             }
 
             if (!string.IsNullOrWhiteSpace(session.ClientConnectToken))
@@ -95,7 +95,7 @@ public sealed class RelaySessionStore
             session.ClientReconnectDeadlineUtc = null;
             session.Status = GetComputedStatus(session);
 
-            _logger.LogInformation("Claimed relay session {SessionId} by {ClientName}", session.Id, session.ClientName);
+            _logger.LogInformation("Claimed broker session {SessionId} by {ClientName}", session.Id, session.ClientName);
 
             return new ClaimSessionResponse(
                 session.Id,
@@ -163,7 +163,7 @@ public sealed class RelaySessionStore
         var session = GetSessionForHost(sessionId, hostToken);
         lock (session.SyncRoot)
         {
-            session.Status = RelaySessionStatus.Closed;
+            session.Status = SessionLifecycleStatus.Closed;
         }
 
         _ = CloseSocketsAndRemoveAsync(session, "Closed by host");
@@ -189,7 +189,7 @@ public sealed class RelaySessionStore
             session.HostLastSeenUtc = DateTimeOffset.UtcNow;
             session.HostReconnectDeadlineUtc = null;
             session.Status = GetComputedStatus(session);
-            TryStartRelay(session);
+            TryStartBridge(session);
         }
     }
 
@@ -214,7 +214,7 @@ public sealed class RelaySessionStore
             session.ClientLastSeenUtc = DateTimeOffset.UtcNow;
             session.ClientReconnectDeadlineUtc = null;
             session.Status = GetComputedStatus(session);
-            TryStartRelay(session);
+            TryStartBridge(session);
         }
     }
 
@@ -247,17 +247,17 @@ public sealed class RelaySessionStore
         return expired;
     }
 
-    private RelaySession GetSession(Guid sessionId)
+    private BrokerSession GetSession(Guid sessionId)
     {
         if (!_sessions.TryGetValue(sessionId, out var session))
         {
-            throw new KeyNotFoundException("Nie znaleziono sesji relay.");
+            throw new KeyNotFoundException("Nie znaleziono sesji pośredniej.");
         }
 
         return session;
     }
 
-    private RelaySession GetSessionForHost(Guid sessionId, string hostToken)
+    private BrokerSession GetSessionForHost(Guid sessionId, string hostToken)
     {
         var session = GetSession(sessionId);
         if (!string.Equals(session.HostToken, hostToken, StringComparison.Ordinal))
@@ -268,23 +268,23 @@ public sealed class RelaySessionStore
         return session;
     }
 
-    private void EnsureSessionUsable(RelaySession session)
+    private void EnsureSessionUsable(BrokerSession session)
     {
         if (session.ExpiresAtUtc <= DateTimeOffset.UtcNow)
         {
-            session.Status = RelaySessionStatus.Expired;
-            throw new InvalidOperationException("Sesja relay wygasla.");
+            session.Status = SessionLifecycleStatus.Expired;
+            throw new InvalidOperationException("Sesja pośrednia wygasła.");
         }
 
-        if (session.Status is RelaySessionStatus.Closed or RelaySessionStatus.Expired)
+        if (session.Status is SessionLifecycleStatus.Closed or SessionLifecycleStatus.Expired)
         {
-            throw new InvalidOperationException("Sesja relay jest juz zamknieta.");
+            throw new InvalidOperationException("Sesja pośrednia jest już zamknięta.");
         }
     }
 
-    private void TryStartRelay(RelaySession session)
+    private void TryStartBridge(BrokerSession session)
     {
-        if (session.RelayStarted)
+        if (session.BridgeStarted)
         {
             return;
         }
@@ -292,27 +292,27 @@ public sealed class RelaySessionStore
         if (session.HostSocket?.State == WebSocketState.Open &&
             session.ClientSocket?.State == WebSocketState.Open)
         {
-            session.RelayStarted = true;
-            session.Status = RelaySessionStatus.Active;
+            session.BridgeStarted = true;
+            session.Status = SessionLifecycleStatus.Active;
             var hostSocket = session.HostSocket;
             var clientSocket = session.ClientSocket;
-            _ = Task.Run(() => RelayAsync(session, hostSocket, clientSocket));
+            _ = Task.Run(() => BridgeAsync(session, hostSocket, clientSocket));
         }
     }
 
-    private async Task RelayAsync(RelaySession session, WebSocket hostSocket, WebSocket clientSocket)
+    private async Task BridgeAsync(BrokerSession session, WebSocket hostSocket, WebSocket clientSocket)
     {
-        _logger.LogInformation("Relay started for session {SessionId}", session.Id);
+        _logger.LogInformation("Bridge started for session {SessionId}", session.Id);
 
         try
         {
             await Task.WhenAny(
-                RelayOneWayAsync(hostSocket, clientSocket, session.Id, "host->client"),
-                RelayOneWayAsync(clientSocket, hostSocket, session.Id, "client->host"));
+                PipeOneWayAsync(hostSocket, clientSocket, session.Id, "host->client"),
+                PipeOneWayAsync(clientSocket, hostSocket, session.Id, "client->host"));
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Relay failed for session {SessionId}", session.Id);
+            _logger.LogWarning(ex, "Bridge failed for session {SessionId}", session.Id);
         }
         finally
         {
@@ -321,14 +321,14 @@ public sealed class RelaySessionStore
                 if (ReferenceEquals(session.HostSocket, hostSocket) &&
                     ReferenceEquals(session.ClientSocket, clientSocket))
                 {
-                    session.RelayStarted = false;
+                    session.BridgeStarted = false;
                     session.Status = GetComputedStatus(session);
                 }
             }
         }
     }
 
-    private async Task RelayOneWayAsync(WebSocket source, WebSocket destination, Guid sessionId, string direction)
+    private async Task PipeOneWayAsync(WebSocket source, WebSocket destination, Guid sessionId, string direction)
     {
         var buffer = new byte[64 * 1024];
         while (source.State == WebSocketState.Open && destination.State == WebSocketState.Open)
@@ -364,15 +364,15 @@ public sealed class RelaySessionStore
         }
     }
 
-    private async Task CloseSocketsAndRemoveAsync(RelaySession session, string reason)
+    private async Task CloseSocketsAndRemoveAsync(BrokerSession session, string reason)
     {
         if (_sessions.TryRemove(session.Id, out _))
         {
-            _logger.LogInformation("Closing relay session {SessionId}: {Reason}", session.Id, reason);
+            _logger.LogInformation("Closing broker session {SessionId}: {Reason}", session.Id, reason);
         }
 
-        session.Status = RelaySessionStatus.Closed;
-        session.RelayStarted = false;
+        session.Status = SessionLifecycleStatus.Closed;
+        session.BridgeStarted = false;
         await CloseSocketIfOpenAsync(session.HostSocket);
         await CloseSocketIfOpenAsync(session.ClientSocket);
     }
@@ -415,18 +415,18 @@ public sealed class RelaySessionStore
         return pairCode.Trim().Replace("-", string.Empty).ToUpperInvariant();
     }
 
-    private bool ShouldRemoveSession(RelaySession session, DateTimeOffset now)
+    private bool ShouldRemoveSession(BrokerSession session, DateTimeOffset now)
     {
         lock (session.SyncRoot)
         {
-            if (session.Status is RelaySessionStatus.Closed or RelaySessionStatus.Expired)
+            if (session.Status is SessionLifecycleStatus.Closed or SessionLifecycleStatus.Expired)
             {
                 return true;
             }
 
             if (session.ExpiresAtUtc <= now)
             {
-                session.Status = RelaySessionStatus.Expired;
+                session.Status = SessionLifecycleStatus.Expired;
                 return true;
             }
 
@@ -434,7 +434,7 @@ public sealed class RelaySessionStore
                 session.HostReconnectDeadlineUtc.Value <= now &&
                 session.HostSocket?.State != WebSocketState.Open)
             {
-                session.Status = RelaySessionStatus.Expired;
+                session.Status = SessionLifecycleStatus.Expired;
                 return true;
             }
 
@@ -442,7 +442,7 @@ public sealed class RelaySessionStore
                 session.ClientReconnectDeadlineUtc.Value <= now &&
                 session.ClientSocket?.State != WebSocketState.Open)
             {
-                session.Status = RelaySessionStatus.Expired;
+                session.Status = SessionLifecycleStatus.Expired;
                 return true;
             }
 
@@ -451,7 +451,7 @@ public sealed class RelaySessionStore
                 (now - session.HostLastSeenUtc.Value).TotalSeconds > _options.HeartbeatStaleSeconds &&
                 string.IsNullOrWhiteSpace(session.ClientConnectToken))
             {
-                session.Status = RelaySessionStatus.Expired;
+                session.Status = SessionLifecycleStatus.Expired;
                 return true;
             }
 
@@ -492,7 +492,7 @@ public sealed class RelaySessionStore
                 session.ClientReconnectDeadlineUtc = now.AddSeconds(_options.ReconnectGraceSeconds);
             }
 
-            session.RelayStarted = false;
+            session.BridgeStarted = false;
             session.Status = GetComputedStatus(session);
         }
     }
@@ -503,9 +503,9 @@ public sealed class RelaySessionStore
                (!string.IsNullOrWhiteSpace(resumeToken) && string.Equals(resumeToken, presentedToken, StringComparison.Ordinal));
     }
 
-    private static RelaySessionStatus GetComputedStatus(RelaySession session)
+    private static SessionLifecycleStatus GetComputedStatus(BrokerSession session)
     {
-        if (session.Status is RelaySessionStatus.Closed or RelaySessionStatus.Expired)
+        if (session.Status is SessionLifecycleStatus.Closed or SessionLifecycleStatus.Expired)
         {
             return session.Status;
         }
@@ -516,28 +516,28 @@ public sealed class RelaySessionStore
 
         if (hostConnected && clientConnected)
         {
-            return RelaySessionStatus.Active;
+            return SessionLifecycleStatus.Active;
         }
 
         if (!clientClaimed)
         {
-            return hostConnected ? RelaySessionStatus.WaitingForClient : RelaySessionStatus.PendingHost;
+            return hostConnected ? SessionLifecycleStatus.WaitingForClient : SessionLifecycleStatus.PendingHost;
         }
 
         if (hostConnected && !clientConnected)
         {
-            return RelaySessionStatus.WaitingForClientReconnect;
+            return SessionLifecycleStatus.WaitingForClientReconnect;
         }
 
         if (!hostConnected && clientConnected)
         {
-            return RelaySessionStatus.WaitingForHostReconnect;
+            return SessionLifecycleStatus.WaitingForHostReconnect;
         }
 
-        return RelaySessionStatus.WaitingForReconnect;
+        return SessionLifecycleStatus.WaitingForReconnect;
     }
 
-    private static SessionStatusResponse ToStatusResponse(RelaySession session) =>
+    private static SessionStatusResponse ToStatusResponse(BrokerSession session) =>
         new(
             session.Id,
             session.DeviceName,
@@ -545,16 +545,16 @@ public sealed class RelaySessionStore
             session.ExpiresAtUtc,
             session.HostSocket?.State == WebSocketState.Open,
             session.ClientSocket?.State == WebSocketState.Open,
-            session.RelayStarted,
+            session.BridgeStarted,
             session.ClaimAttempts,
             session.HostLastSeenUtc,
             session.ClientLastSeenUtc,
             session.HostReconnectDeadlineUtc,
             session.ClientReconnectDeadlineUtc);
 
-    private sealed class RelaySession
+    private sealed class BrokerSession
     {
-        public RelaySession(Guid Id, string HostToken, string DeviceName, string PairCode, string HostConnectToken, string HostResumeToken, DateTimeOffset ExpiresAtUtc)
+        public BrokerSession(Guid Id, string HostToken, string DeviceName, string PairCode, string HostConnectToken, string HostResumeToken, DateTimeOffset ExpiresAtUtc)
         {
             this.Id = Id;
             this.HostToken = HostToken;
@@ -576,9 +576,9 @@ public sealed class RelaySessionStore
         public string? ClientConnectToken { get; set; }
         public string? ClientResumeToken { get; set; }
         public string? ClientName { get; set; }
-        public RelaySessionStatus Status { get; set; } = RelaySessionStatus.PendingHost;
+        public SessionLifecycleStatus Status { get; set; } = SessionLifecycleStatus.PendingHost;
         public int ClaimAttempts { get; set; }
-        public bool RelayStarted { get; set; }
+        public bool BridgeStarted { get; set; }
         public WebSocket? HostSocket { get; set; }
         public WebSocket? ClientSocket { get; set; }
         public DateTimeOffset? HostLastSeenUtc { get; set; }

@@ -1,14 +1,14 @@
 namespace AdbWireGuardRelay;
 
-public sealed class RelayCleanupService : BackgroundService
+public sealed class SessionCleanupService : BackgroundService
 {
-    private readonly RelaySessionStore _sessionStore;
-    private readonly RelayOptions _options;
-    private readonly ILogger<RelayCleanupService> _logger;
+    private readonly SessionBroker _sessionBroker;
+    private readonly BrokerOptions _options;
+    private readonly ILogger<SessionCleanupService> _logger;
 
-    public RelayCleanupService(RelaySessionStore sessionStore, RelayOptions options, ILogger<RelayCleanupService> logger)
+    public SessionCleanupService(SessionBroker sessionBroker, BrokerOptions options, ILogger<SessionCleanupService> logger)
     {
-        _sessionStore = sessionStore;
+        _sessionBroker = sessionBroker;
         _options = options;
         _logger = logger;
     }
@@ -19,15 +19,15 @@ public sealed class RelayCleanupService : BackgroundService
         {
             try
             {
-                var removed = _sessionStore.CleanupExpiredSessions();
+                var removed = _sessionBroker.CleanupExpiredSessions();
                 if (removed.Count > 0)
                 {
-                    _logger.LogInformation("Cleanup removed {Count} expired relay sessions", removed.Count);
+                    _logger.LogInformation("Cleanup removed {Count} expired broker sessions", removed.Count);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Relay cleanup failed");
+                _logger.LogWarning(ex, "Broker cleanup failed");
             }
 
             await Task.Delay(TimeSpan.FromSeconds(_options.CleanupIntervalSeconds), stoppingToken);

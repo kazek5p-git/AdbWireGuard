@@ -1,8 +1,9 @@
 namespace AdbWireGuardRelay;
 
-public sealed record RelayOptions
+public sealed record BrokerOptions
 {
-    public const string SectionName = "Relay";
+    public const string PrimarySectionName = "Broker";
+    public const string LegacySectionName = "Relay";
 
     public List<string> HostTokens { get; init; } = [];
     public int DefaultSessionTtlMinutes { get; init; } = 5;
@@ -14,10 +15,18 @@ public sealed record RelayOptions
     public int HeartbeatIntervalSeconds { get; init; } = 15;
     public int HeartbeatStaleSeconds { get; init; } = 45;
 
-    public static RelayOptions FromConfiguration(IConfiguration configuration)
+    public static BrokerOptions FromConfiguration(IConfiguration configuration)
     {
-        var options = configuration.GetSection(SectionName).Get<RelayOptions>() ?? new RelayOptions();
-        var envTokens = configuration["ADBWG_RELAY_HOST_TOKENS"];
+        var options =
+            configuration.GetSection(PrimarySectionName).Get<BrokerOptions>() ??
+            configuration.GetSection(LegacySectionName).Get<BrokerOptions>() ??
+            new BrokerOptions();
+
+        var envTokens = configuration["ADBWG_BROKER_HOST_TOKENS"];
+        if (string.IsNullOrWhiteSpace(envTokens))
+        {
+            envTokens = configuration["ADBWG_RELAY_HOST_TOKENS"];
+        }
         if (!string.IsNullOrWhiteSpace(envTokens))
         {
             options = options with
