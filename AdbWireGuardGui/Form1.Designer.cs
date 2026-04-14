@@ -219,7 +219,7 @@ partial class Form1
         relayModeRadioButton.Name = "relayModeRadioButton";
         relayModeRadioButton.Size = new Size(128, 19);
         relayModeRadioButton.TabIndex = 2;
-        relayModeRadioButton.Text = "Połącz przez serwer";
+        relayModeRadioButton.Text = "Połącz kodem";
         relayModeRadioButton.UseVisualStyleBackColor = true;
         relayModeRadioButton.CheckedChanged += modeRadioButton_CheckedChanged;
         //
@@ -328,7 +328,7 @@ partial class Form1
         relayServerLabel.Name = "relayServerLabel";
         relayServerLabel.Size = new Size(69, 15);
         relayServerLabel.TabIndex = 0;
-        relayServerLabel.Text = "Adres relay";
+        relayServerLabel.Text = "Adres serwera pośredniego";
         //
         // relayServerTextBox
         //
@@ -347,7 +347,7 @@ partial class Form1
         relayHostTokenLabel.Name = "relayHostTokenLabel";
         relayHostTokenLabel.Size = new Size(70, 15);
         relayHostTokenLabel.TabIndex = 2;
-        relayHostTokenLabel.Text = "Token hosta";
+        relayHostTokenLabel.Text = "Token tworzenia kodu";
         //
         // relayHostTokenTextBox
         //
@@ -383,7 +383,7 @@ partial class Form1
         relayPairCodeLabel.Name = "relayPairCodeLabel";
         relayPairCodeLabel.Size = new Size(132, 15);
         relayPairCodeLabel.TabIndex = 6;
-        relayPairCodeLabel.Text = "Kod sesji (dla klienta)";
+        relayPairCodeLabel.Text = "Kod połączenia";
         //
         // relayPairCodeTextBox
         //
@@ -391,7 +391,7 @@ partial class Form1
         relayPairCodeTextBox.Dock = DockStyle.Fill;
         relayPairCodeTextBox.Location = new Point(147, 99);
         relayPairCodeTextBox.Name = "relayPairCodeTextBox";
-        relayPairCodeTextBox.PlaceholderText = "Wpisz kod, aby dołączyć do sesji";
+        relayPairCodeTextBox.PlaceholderText = "Wpisz kod, aby dołączyć do połączenia";
         relayPairCodeTextBox.Size = new Size(784, 23);
         relayPairCodeTextBox.TabIndex = 7;
         relayPairCodeTextBox.TextChanged += relayPairCodeTextBox_TextChanged;

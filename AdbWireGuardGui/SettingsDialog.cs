@@ -8,6 +8,7 @@ internal sealed class SettingsDialog : Form
     private readonly Action _onClearLogs;
     private readonly CheckBox _voiceCheckBox;
     private readonly CheckBox _soundCheckBox;
+    private readonly TextBox _relayHostTokenTextBox;
     private readonly CheckBox _routerAutoCheckBox;
     private readonly TextBox _routerHostTextBox;
     private readonly TextBox _routerPortTextBox;
@@ -21,6 +22,7 @@ internal sealed class SettingsDialog : Form
 
     public bool EnableVoiceNotifications => _voiceCheckBox.Checked;
     public bool EnableSoundNotifications => _soundCheckBox.Checked;
+    public string RelayHostToken => _relayHostTokenTextBox.Text.Trim();
     public bool EnableRouterAutomation => _routerAutoCheckBox.Checked;
     public string RouterHost => _routerHostTextBox.Text.Trim();
     public int RouterPort => int.TryParse(_routerPortTextBox.Text.Trim(), out var value) && value > 0 ? value : 22;
@@ -33,6 +35,7 @@ internal sealed class SettingsDialog : Form
         bool enableVoiceNotifications,
         bool enableSoundNotifications,
         bool enableRouterAutomation,
+        string relayHostToken,
         string routerHost,
         int routerPort,
         string routerUser,
@@ -50,15 +53,16 @@ internal sealed class SettingsDialog : Form
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
-        ClientSize = new Size(640, 470);
+        ClientSize = new Size(640, 560);
 
         var rootPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
             ColumnCount = 1,
-            RowCount = 5
+            RowCount = 6
         };
+        rootPanel.RowStyles.Add(new RowStyle());
         rootPanel.RowStyles.Add(new RowStyle());
         rootPanel.RowStyles.Add(new RowStyle());
         rootPanel.RowStyles.Add(new RowStyle());
@@ -97,6 +101,37 @@ internal sealed class SettingsDialog : Form
 
         notificationsPanel.Controls.Add(_voiceCheckBox, 0, 0);
         notificationsPanel.Controls.Add(_soundCheckBox, 0, 1);
+
+        var pairingPanel = new TableLayoutPanel
+        {
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 2,
+            Margin = new Padding(0, 8, 0, 8)
+        };
+        pairingPanel.ColumnStyles.Add(new ColumnStyle());
+        pairingPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+
+        var pairingHintLabel = new Label
+        {
+            AutoSize = true,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(3, 0, 3, 8),
+            Text = "Tryb \"Połącz kodem\" używa tego tokenu tylko do tworzenia nowych kodów połączenia na komputerze hosta. Klient wpisuje wyłącznie kod połączenia."
+        };
+
+        _relayHostTokenTextBox = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            Text = relayHostToken,
+            UseSystemPasswordChar = true
+        };
+
+        pairingPanel.Controls.Add(pairingHintLabel, 0, 0);
+        pairingPanel.SetColumnSpan(pairingHintLabel, 2);
+        pairingPanel.Controls.Add(new Label { AutoSize = true, Text = "Token tworzenia kodu", Margin = new Padding(0, 6, 12, 0) }, 0, 1);
+        pairingPanel.Controls.Add(_relayHostTokenTextBox, 1, 1);
 
         var routerPanel = new TableLayoutPanel
         {
@@ -205,8 +240,9 @@ internal sealed class SettingsDialog : Form
 
         rootPanel.Controls.Add(_infoLabel, 0, 0);
         rootPanel.Controls.Add(notificationsPanel, 0, 1);
-        rootPanel.Controls.Add(routerPanel, 0, 2);
-        rootPanel.Controls.Add(actionsPanel, 0, 3);
+        rootPanel.Controls.Add(pairingPanel, 0, 2);
+        rootPanel.Controls.Add(routerPanel, 0, 3);
+        rootPanel.Controls.Add(actionsPanel, 0, 4);
 
         Controls.Add(rootPanel);
         AcceptButton = _closeButton;
